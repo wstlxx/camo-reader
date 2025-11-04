@@ -6,17 +6,24 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ini = "1.3.0"         # <--- CORRECTED (was 2.0.0)
-winit = "0.29.15"     # Core windowing library
-egui = "0.27.2"       # For simple text rendering
-egui-winit = "0.27.2" # Correct (hyphen)
-egui_glow = "0.27.2"  # Correct (underscore)
-glow = "0.13.0"       # OpenGL bindings
+ini = "1.3.0"
+winit = "0.29.15"
+egui = "0.27.2"
+egui-winit = "0.27.2"
+egui_glow = "0.27.2"
+glow = "0.13.0"
+
+# --- NEW / UPDATED DEPENDENCIES ---
+# These are required for the modern egui-glow setup
+glutin = { version = "0.34.1", features = ["wgl"] } # wgl feature is for Windows
+glutin-winit = "0.4.2"
+raw-window-handle = "0.6.0"
+# --- END NEW ---
 
 # For system-wide features
-tray-item = "0.9.0"         # System tray icon
-global-hotkey = "0.5.0"     # For F1, Ctrl+F1, etc.
-once_cell = "1.19.0"        # For global access to event loop proxy
+tray-item = "0.9.0"
+global-hotkey = "0.5.0"
+once_cell = "1.19.0"
 
 [profile.release]
 strip = true  # Strip debug symbols for a smaller exe

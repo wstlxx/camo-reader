@@ -1,26 +1,34 @@
 // Set this to hide the console window that normally appears on Windows
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use egui::{FontId, Label, RichText, Rgba, ScrollArea, Sense};
+use egui::{FontId, Label, RichText, Rgba, ScrollArea}; // FIX: Removed unused 'Sense'
 use egui_winit::State;
 use egui_glow::EguiGlow;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use glow::HasContext;
-use ini::Ini;
+use ini::Ini; // FIX: This import is correct, the error was downstream.
 use once_cell::sync::OnceCell;
-use std::collections::HashMap;
+// FIX: Removed unused 'HashMap'
 use std::env;
 use std::fs;
 use std::rc::Rc;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self}; // FIX: Removed unused 'Receiver'
+use std::sync::Arc; // FIX: Added Arc for EguiGlow
 use std::time::{Duration, SystemTime};
 use tray_item::{IconSource, TrayItem};
-use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize};
+use winit::dpi::{LogicalPosition, LogicalSize}; // FIX: Removed unused Physical imports
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy};
+use winit::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy}; // FIX: Removed unused 'EventLoop'
 use winit::platform::windows::WindowBuilderExtWindows;
-use winit::window::{Window, WindowBuilder, WindowId, WindowLevel};
+use winit::window::{WindowBuilder, WindowLevel}; // FIX: Removed unused 'Window' and 'WindowId'
+
+// --- FIX: Add new imports for glutin/GL setup ---
+use glutin::context::{ContextAttributesBuilder, PossiblyCurrentContext};
+use glutin::display::GetGlDisplay;
+use glutin::prelude::{GlDisplay, NotCurrentGlContextSurfaceAccessor};
+use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, WindowSurface};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
 // --- Configuration Struct ---
 struct Config {
@@ -91,12 +99,11 @@ fn find_and_load_latest_txt() -> String {
 
     match latest_file {
         Some(path) => fs::read_to_string(path).unwrap_or_else(|e| format!("Error reading file: {}", e)),
-        None => "No .txt files found in this directory.\nCreate one and restart.".to_string(),
+        None => "No .txt files found in this directory.\nCreate one and restart.".to-string(),
     }
 }
 
 // --- Global Event Loop Management ---
-// Custom events to send from hotkeys/tray to the main window loop
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum UserEvent {
     ToggleVisibility,
@@ -105,7 +112,6 @@ enum UserEvent {
     Quit,
 }
 
-// We use OnceCell to get a static EventLoopProxy we can send events from
 static EVENT_LOOP_PROXY: OnceCell<EventLoopProxy<UserEvent>> = OnceCell::new();
 
 // --- Main Application ---
@@ -114,80 +120,97 @@ fn main() {
     let text_content = find_and_load_latest_txt();
 
     // 1. Set up Event Loop and Window
-    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    // FIX: Add .expect() to unwrap the Result from build()
+    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
+        .build()
+        .expect("Failed to create event loop");
     let event_loop_proxy = event_loop.create_proxy();
     EVENT_LOOP_PROXY.set(event_loop_proxy).unwrap();
 
     let window_builder = WindowBuilder::new()
-        .with_title("Camo Reader") // Updated name
-        .with_decorations(false) // No title bar, borders, etc.
-        .with_transparent(true)  // Enable transparency
+        .with_title("Camo Reader")
+        .with_decorations(false)
+        .with_transparent(true)
         .with_window_level(WindowLevel::AlwaysOnTop)
-        .with_skip_taskbar(true) // Don't show in taskbar (since we have a tray)
+        .with_skip_taskbar(true)
         .with_position(LogicalPosition::new(config.x, config.y))
         .with_inner_size(LogicalSize::new(config.width, config.height));
 
-    // This makes the window "click-through-able"
-    let window_builder = window_builder.with_undraggable_on_click(true);
+    // FIX: Renamed 'with_undraggable_on_click' to 'with_undraggable'
+    let window_builder = window_builder.with_undraggable(true);
 
-    let (window, glow_context) =
-        glutin_winit::DisplayBuilder::new()
-            .with_window_builder(Some(window_builder))
-            .build(&event_loop, |mut configs| {
-                // Find a config with transparency
-                configs.find(|c| c.supports_transparency().unwrap_or(false)).unwrap()
-            })
-            .expect("Failed to create window");
+    // --- FIX: This is the new, correct GL/Window setup ---
+    // 1. Build window and GL config
+    let (window, gl_config) = glutin_winit::DisplayBuilder::new()
+        .with_window_builder(Some(window_builder))
+        .build(&event_loop, |mut configs| {
+            // Find a config with transparency
+            configs.find(|c| c.supports_transparency().unwrap_or(false)).unwrap()
+        })
+        .expect("Failed to create window");
     
     let window = window.expect("Could not create window");
-    let glow_context = unsafe {
-        glow_context
-            .make_current(&window)
-            .expect("Failed to make GL context current")
+    let raw_window_handle = window.window_handle().unwrap().as_raw();
+    let gl_display = gl_config.display();
+
+    // 2. Create GL context
+    let context_attributes = ContextAttributesBuilder::new().build(Some(raw_window_handle));
+    let gl_context = unsafe {
+        gl_display.create_context(&gl_config, &context_attributes)
+    }.expect("Failed to create GL context");
+
+    // 3. Create GL surface
+    let size = window.inner_size();
+    let surface_attributes = SurfaceAttributesBuilder::<WindowSurface>::new()
+        .build(raw_window_handle, size.width.try_into().unwrap(), size.height.try_into().unwrap());
+    let gl_surface = unsafe {
+        gl_display.create_window_surface(&gl_config, &surface_attributes)
+    }.expect("Failed to create GL surface");
+
+    // 4. Make context current
+    let gl_context = gl_context.make_current(&gl_surface).expect("Failed to make context current");
+
+    // 5. Load Glow
+    let glow = unsafe {
+        // FIX: Use 'from_loader_function' (not ..._arr) and load from 'gl_display'
+        glow::Context::from_loader_function(|s| gl_display.get_proc_address(s))
     };
-    let glow =
-        unsafe { glow::Context::from_loader_function_arr(|s| glow_context.get_proc_address(s)) };
+    // --- End new GL setup ---
+
 
     // 2. Set up Tray Icon
-    // We run this in a separate thread because tray-item blocks.
     std::thread::spawn(|| {
         let mut tray = TrayItem::new(
-            "Camo Reader", // Updated name
-            IconSource::Resource(""), // Use default icon
+            "Camo Reader",
+            IconSource::Resource(""),
         )
         .expect("Failed to create tray icon");
 
-        tray.add_label("Camo Reader").unwrap(); // Updated name
+        tray.add_label("Camo Reader").unwrap();
         tray.add_menu_item("Quit", || {
             if let Some(proxy) = EVENT_LOOP_PROXY.get() {
                 proxy.send_event(UserEvent::Quit).ok();
             }
         })
         .unwrap();
-
-        // This blocks the thread, which is fine
-        tray_item::main_loop();
+        
+        // FIX: Removed 'tray_item::main_loop();' as it's no longer needed in this version.
     });
 
     // 3. Set up Global Hotkeys
-    // We also run this in a separate thread.
-    let (hotkey_tx, hotkey_rx) = mpsc::channel();
     std::thread::spawn(move || {
         let manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
         
-        // Define hotkeys
         let hide_key = HotKey::new(None, Code::F1);
         let show_key = HotKey::new(Some(Modifiers::CONTROL), Code::F1);
         let page_up_key = HotKey::new(None, Code::F3);
         let page_down_key = HotKey::new(None, Code::F4);
 
-        // Register hotkeys
         manager.register(hide_key).unwrap();
         manager.register(show_key).unwrap();
         manager.register(page_up_key).unwrap();
         manager.register(page_down_key).unwrap();
 
-        // Listen for events
         loop {
             if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
                 let user_event = match event.id {
@@ -208,35 +231,41 @@ fn main() {
     });
 
     // 4. Set up Egui
-    let mut egui_glow = EguiGlow::new(&event_loop, Rc::new(glow));
-    let mut egui_state = State::new(egui_glow.max_texture_side() as usize, &window);
+    // FIX: Use Arc<glow::Context> instead of Rc
+    let mut egui_glow = EguiGlow::new(&event_loop, Arc::new(glow));
+    // FIX: Provide all 5 arguments to State::new
+    let mut egui_state = State::new(
+        egui_glow.max_texture_side() as usize,
+        &window,
+        &window, // The window implements HasDisplayHandle
+        None,    // Use default pixels_per_point
+        None,    // Use default max_retained_back_buffers
+    );
 
     // --- Application State ---
     let mut is_visible = true;
     let mut scroll_offset = 0.0;
-    let text_style = FontId::proportional(20.0); // Font size for text
-    let line_height = 25.0; // Estimated line height for paging
+    let text_style = FontId::proportional(20.0);
+    let line_height = 25.0;
     
     // --- Main Event Loop ---
+    // FIX: 'event_loop' is now unwrapped, so .run() is valid.
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
-            // --- Handle Custom Events from Hotkeys/Tray ---
             Event::UserEvent(user_event) => match user_event {
                 UserEvent::ToggleVisibility => {
                     is_visible = !is_visible;
                     window.set_visible(is_visible);
                     if is_visible {
-                        // When showing, make it "non-click-through" so user can scroll
-                        window.set_undraggable_on_click(false);
+                        window.set_undraggable(false);
                     } else {
-                        // When hiding, make it click-through
-                        window.set_undraggable_on_click(true);
+                        window.set_undraggable(true);
                     }
                 }
                 UserEvent::PageUp => {
-                    scroll_offset -= config.height as f32 - line_height; // Page by window height
+                    scroll_offset -= config.height as f32 - line_height;
                     if scroll_offset < 0.0 { scroll_offset = 0.0; }
                     window.request_redraw();
                 }
@@ -245,11 +274,11 @@ fn main() {
                      window.request_redraw();
                 }
                 UserEvent::Quit => {
-                    *control_flow = ControlFlow::Exit;
+                    // FIX: Use 'ExitWithCode' instead of 'Exit'
+                    *control_flow = ControlFlow::ExitWithCode(0);
                 }
             },
 
-            // --- Handle Window Events ---
             Event::WindowEvent { event, .. } => {
                 let event_response = egui_state.on_window_event(&window, &event);
                 if event_response.repaint {
@@ -261,90 +290,80 @@ fn main() {
 
                 match event {
                     WindowEvent::CloseRequested => {
-                        *control_flow = ControlFlow::Exit;
+                        // FIX: Use 'ExitWithCode' instead of 'Exit'
+                        *control_flow = ControlFlow::ExitWithCode(0);
                     }
                     WindowEvent::Resized(physical_size) => {
-                         glow_context.resize(physical_size);
+                         // FIX: Resize the 'gl_surface', not the 'glow_context'
+                         gl_surface.resize(
+                            &gl_context,
+                            physical_size.width.try_into().unwrap(),
+                            physical_size.height.try_into().unwrap()
+                         );
                          window.request_redraw();
                     }
-                    // This logic makes the window "click-through" when the mouse leaves it
                     WindowEvent::MouseInput { .. } => {
-                        // When user clicks, make it interactable
-                        window.set_undraggable_on_click(false);
+                        window.set_undraggable(false);
                     }
                     WindowEvent::CursorLeft { .. } => {
-                        // When mouse leaves, make it click-through again
-                        window.set_undraggable_on_click(true);
+                        window.set_undraggable(true);
+                    }
+                    
+                    // FIX: 'RedrawRequested' is a WindowEvent, so it must be handled here.
+                    WindowEvent::RedrawRequested => {
+                        let raw_input = egui_state.take_egui_input(&window);
+                        let mut egui_output = egui_glow.run(&window, raw_input, |ctx| {
+                            
+                            let text_color = Rgba::from_rgba_unmultiplied(
+                                1.0, 1.0, 1.0,
+                                config.text_alpha as f32 / 255.0,
+                            );
+                            
+                            let frame = egui::Frame::none().fill(egui::Color32::TRANSPARENT);
+                            egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+                                
+                                let mut scroll_area = ScrollArea::vertical()
+                                    .auto_shrink([false; 2])
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            Label::new(
+                                                RichText::new(&text_content)
+                                                    .font(text_style.clone())
+                                                    .color(text_color),
+                                            )
+                                            .wrap(true),
+                                        );
+                                    });
+                                
+                                // FIX: Removed '.lock()' from state
+                                let mut state = scroll_area.state;
+                                state.offset.y = scroll_offset;
+                                // FIX: '.store()' takes 2 args, not 3
+                                state.store(ctx, scroll_area.id);
+                                // FIX: Removed '.lock()' from state
+                                scroll_offset = scroll_area.state.offset.y;
+                            });
+                        });
+
+                        egui_state.handle_platform_output(&window, egui_output.platform_output);
+                        
+                        unsafe {
+                            glow.clear_color(0.0, 0.0, 0.0, 0.0);
+                            glow.clear(glow::COLOR_BUFFER_BIT);
+                        }
+
+                        egui_glow.paint(&window, &gl_context, egui_output.textures_delta, egui_output.shapes);
+                        
+                        // FIX: Swap buffers on 'gl_surface'
+                        gl_surface.swap_buffers(&gl_context).unwrap();
                     }
                     _ => (),
                 }
             }
-
-            // --- Handle Redrawing ---
-            Event::RedrawRequested(_) => {
-                let raw_input = egui_state.take_egui_input(&window);
-                let mut egui_output = egui_glow.run(&window, raw_input, |ctx| {
-                    
-                    // --- This is the "Simplified" Rendering (Semi-Transparent Text) ---
-                    
-                    // 1. Define a text color with the alpha from config.ini
-                    let text_color = Rgba::from_rgba_unmultiplied(
-                        1.0, 1.0, 1.0, // White text
-                        config.text_alpha as f32 / 255.0, // Alpha level
-                    );
-                    
-                    // 2. Make the main panel completely transparent
-                    let frame = egui::Frame::none().fill(egui::Color32::TRANSPARENT);
-                    egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
-                        
-                        // --- This is where the "Pixel-Shift" logic would go ---
-                        // 1. You would *not* use egui::Label here.
-                        // 2. You would capture the screen behind the window.
-                        // 3. Get the text layout (e.g., from cosmic-text).
-                        // 4. For each pixel in the text layout:
-                        //    a. Get the background color from the screen capture.
-                        //    b. Apply your "color_shift_level" logic to it.
-                        //    c. Draw that single pixel to a pixel buffer.
-                        // 5. Blit the final pixel buffer to the screen.
-                        // This is *extremely* complex.
-                        // --- End Pixel-Shift Logic ---
-                        
-                        // 3. Add a ScrollArea for paging
-                        let mut scroll_area = ScrollArea::vertical()
-                            .auto_shrink([false; 2])
-                            .show(ui, |ui| {
-                                ui.add(
-                                    Label::new(
-                                        RichText::new(&text_content)
-                                            .font(text_style.clone())
-                                            .color(text_color),
-                                    )
-                                    .wrap(true), // Wrap text at window edge
-                                );
-                            });
-                        
-                        // 4. Manually control scrolling for F3/F4
-                        let mut state = scroll_area.state.lock();
-                        state.offset.y = scroll_offset;
-                        scroll_area.state.store(ctx, scroll_area.id, state);
-                        scroll_offset = scroll_area.state.lock().offset.y; // Save new offset if user scrolled
-                    });
-                });
-
-                egui_state.handle_platform_output(&window, egui_output.platform_output);
-                
-                // Clear the screen with *full transparency*
-                unsafe {
-                    glow.clear_color(0.0, 0.0, 0.0, 0.0);
-                    glow.clear(glow::COLOR_BUFFER_BIT);
-                }
-
-                // Draw egui content
-                egui_glow.paint(&window, &glow_context, egui_output.textures_delta, egui_output.shapes);
-                
-                // Swap buffers
-                glow_context.swap_buffers().unwrap();
-            }
+            
+            // FIX: This event is now handled inside 'WindowEvent'
+            // Event::RedrawRequested(_) => { ... }
+            
             _ => (),
         }
     });
