@@ -87,8 +87,7 @@ fn find_and_load_latest_txt() -> String {
 // --- Global Event Loop Management ---
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum UserEvent {
-    Show,
-    Hide,
+    ToggleVisibility,
     PageUp,
     PageDown,
     Quit,
@@ -108,12 +107,8 @@ impl eframe::App for CamoReaderApp {
         if let Some(receiver) = EVENT_RECEIVER.get() {
             if let Ok(event) = receiver.lock().unwrap().try_recv() {
                 match event {
-                    UserEvent::Show => {
-                        self.is_visible = true;
-                        ctx.send_viewport_cmd(ViewportCommand::Visible(self.is_visible));
-                    }
-                    UserEvent::Hide => {
-                        self.is_visible = false;
+                    UserEvent::ToggleVisibility => {
+                        self.is_visible = !self.is_visible;
                         ctx.send_viewport_cmd(ViewportCommand::Visible(self.is_visible));
                     }
                     UserEvent::PageUp => {
@@ -190,21 +185,18 @@ fn main() {
     std::thread::spawn(move || {
         let manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
         
-        let hide_key = HotKey::new(None, Code::F1);
-        let show_key = HotKey::new(Some(Modifiers::CONTROL), Code::F1);
+        let toggle_visibility_key = HotKey::new(Some(Modifiers::CONTROL), Code::F1);
         let page_up_key = HotKey::new(None, Code::F3);
         let page_down_key = HotKey::new(None, Code::F4);
 
-        manager.register(hide_key).unwrap();
-        manager.register(show_key).unwrap();
+        manager.register(toggle_visibility_key).unwrap();
         manager.register(page_up_key).unwrap();
         manager.register(page_down_key).unwrap();
 
         loop {
             if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
                 let user_event = match event.id {
-                    id if id == hide_key.id() => Some(UserEvent::Hide),
-                    id if id == show_key.id() => Some(UserEvent::Show),
+                    id if id == toggle_visibility_key.id() => Some(UserEvent::ToggleVisibility),
                     id if id == page_up_key.id() => Some(UserEvent::PageUp),
                     id if id == page_down_key.id() => Some(UserEvent::PageDown),
                     _ => None,
