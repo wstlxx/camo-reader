@@ -9,7 +9,7 @@ edition = "2021"
 ini = "3.0.0"         # For reading the config.ini file
 winit = "0.29.15"     # Core windowing library
 egui = "0.27.2"       # For simple text rendering
-egui_winit = "0.27.2" # Integrates egui with winit
+egui-winit = "0.27.2" # Integrates egui with winit
 egui_glow = "0.27.2"  # The OpenGL renderer for egui
 glow = "0.13.0"       # OpenGL bindings
 
