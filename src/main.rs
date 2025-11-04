@@ -13,6 +13,7 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime};
 use tray_item::{IconSource, TrayItem};
 use std::sync::Mutex;
+use log::{info, error};
 
 // --- Configuration Struct ---
 struct Config {
@@ -106,6 +107,7 @@ impl eframe::App for CamoReaderApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Some(receiver) = EVENT_RECEIVER.get() {
             if let Ok(event) = receiver.lock().unwrap().try_recv() {
+                info!("Received event: {:?}", event);
                 match event {
                     UserEvent::ToggleVisibility => {
                         self.is_visible = !self.is_visible;
@@ -158,7 +160,14 @@ impl eframe::App for CamoReaderApp {
     }
 }
 
+use std::fs::File;
+
 fn main() {
+    env_logger::Builder::from_default_env()
+        .target(env_logger::Target::Pipe(Box::new(File::create("camo-reader.log").unwrap())))
+        .init();
+    info!("Starting Camo Reader");
+
     let (tx, rx) = mpsc::channel();
     EVENT_RECEIVER.set(Mutex::new(rx)).unwrap();
 
@@ -168,30 +177,53 @@ fn main() {
     // --- Set up Tray Icon ---
     let tx_clone = tx.clone();
     std::thread::spawn(move || {
-        let mut tray = TrayItem::new(
+        info!("Tray icon thread started");
+        let mut tray = match TrayItem::new(
             "Camo Reader",
             IconSource::Resource("icon.ico"),
-        )
-        .expect("Failed to create tray icon");
+        ) {
+            Ok(tray) => tray,
+            Err(e) => {
+                error!("Failed to create tray icon: {}", e);
+                return;
+            }
+        };
+        info!("Tray icon created");
 
         tray.add_label("Camo Reader").unwrap();
         tray.add_menu_item("Quit", move || {
             tx_clone.send(UserEvent::Quit).ok();
         })
         .unwrap();
+        info!("Tray menu items added");
     });
 
     // --- Set up Global Hotkeys ---
     std::thread::spawn(move || {
-        let manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
+        info!("Hotkey thread started");
+        let manager = match GlobalHotKeyManager::new() {
+            Ok(manager) => manager,
+            Err(e) => {
+                error!("Failed to create hotkey manager: {}", e);
+                return;
+            }
+        };
+        info!("Hotkey manager created");
         
         let toggle_visibility_key = HotKey::new(Some(Modifiers::CONTROL), Code::F1);
         let page_up_key = HotKey::new(None, Code::F3);
         let page_down_key = HotKey::new(None, Code::F4);
 
-        manager.register(toggle_visibility_key).unwrap();
-        manager.register(page_up_key).unwrap();
-        manager.register(page_down_key).unwrap();
+        if let Err(e) = manager.register(toggle_visibility_key) {
+            error!("Failed to register toggle visibility hotkey: {}", e);
+        }
+        if let Err(e) = manager.register(page_up_key) {
+            error!("Failed to register page up hotkey: {}", e);
+        }
+        if let Err(e) = manager.register(page_down_key) {
+            error!("Failed to register page down hotkey: {}", e);
+        }
+        info!("Hotkeys registered");
 
         loop {
             if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
@@ -219,7 +251,8 @@ fn main() {
         ..Default::default()
     };
 
-    eframe::run_native(
+    info!("Starting eframe");
+    if let Err(e) = eframe::run_native(
         "Camo Reader",
         options,
         Box::new(|_cc| {
@@ -230,6 +263,7 @@ fn main() {
                 is_visible: false,
             }))
         }),
-    )
-    .unwrap();
+    ) {
+        error!("Failed to run eframe: {}", e);
+    }
 }
