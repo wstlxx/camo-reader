@@ -14,8 +14,8 @@ egui_glow = "0.27.2"
 glow = "0.13.0"
 
 # --- NEW / UPDATED DEPENDENCIES ---
-# These are required for the modern egui-glow setup
-glutin = { version = "0.34.1", features = ["wgl"] } # wgl feature is for Windows
+# FIX: Corrected glutin version to 0.32.3
+glutin = { version = "0.32.3", features = ["wgl"] } # wgl feature is for Windows
 glutin-winit = "0.4.2"
 raw-window-handle = "0.6.0"
 # --- END NEW ---
