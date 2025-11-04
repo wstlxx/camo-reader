@@ -87,7 +87,8 @@ fn find_and_load_latest_txt() -> String {
 // --- Global Event Loop Management ---
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum UserEvent {
-    ToggleVisibility,
+    Show,
+    Hide,
     PageUp,
     PageDown,
     Quit,
@@ -107,8 +108,12 @@ impl eframe::App for CamoReaderApp {
         if let Some(receiver) = EVENT_RECEIVER.get() {
             if let Ok(event) = receiver.lock().unwrap().try_recv() {
                 match event {
-                    UserEvent::ToggleVisibility => {
-                        self.is_visible = !self.is_visible;
+                    UserEvent::Show => {
+                        self.is_visible = true;
+                        ctx.send_viewport_cmd(ViewportCommand::Visible(self.is_visible));
+                    }
+                    UserEvent::Hide => {
+                        self.is_visible = false;
                         ctx.send_viewport_cmd(ViewportCommand::Visible(self.is_visible));
                     }
                     UserEvent::PageUp => {
@@ -170,7 +175,7 @@ fn main() {
     std::thread::spawn(move || {
         let mut tray = TrayItem::new(
             "Camo Reader",
-            IconSource::Resource(""),
+            IconSource::Resource("icon.ico"),
         )
         .expect("Failed to create tray icon");
 
@@ -198,8 +203,8 @@ fn main() {
         loop {
             if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
                 let user_event = match event.id {
-                    id if id == hide_key.id() => Some(UserEvent::ToggleVisibility),
-                    id if id == show_key.id() => Some(UserEvent::ToggleVisibility),
+                    id if id == hide_key.id() => Some(UserEvent::Hide),
+                    id if id == show_key.id() => Some(UserEvent::Show),
                     id if id == page_up_key.id() => Some(UserEvent::PageUp),
                     id if id == page_down_key.id() => Some(UserEvent::PageDown),
                     _ => None,
@@ -230,7 +235,7 @@ fn main() {
                 text_content,
                 config,
                 scroll_offset: 0.0,
-                is_visible: true,
+                is_visible: false,
             }))
         }),
     )
