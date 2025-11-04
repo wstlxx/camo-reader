@@ -177,7 +177,7 @@ fn main() {
     // 5. Load Glow
     let glow = unsafe {
         // FIX: Use 'from_loader_function' (not ..._arr) and load from 'gl_display'
-        gl_display.get_proc_address(s))
+        glow::Context::from_loader_function(|s| gl_display.get_proc_address(s))
     };
     // --- End new GL setup ---
 
