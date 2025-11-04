@@ -1,0 +1,36 @@
+name: Build Rust Executable (Windows)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install dependencies (for build.rs)
+      run: |
+        choco install vswhere
+        $vsPath = & vswhere -latest -property installationPath
+        Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+        Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation
+    
+    - name: Build release executable
+      run: cargo build --release --verbose
+
+    - name: Upload artifact (EXE)
+      uses: actions/upload-artifact@v4
+      with:
+        name: camo-reader-windows
+        path: target/release/camo_reader.exe # Updated to match your project name
