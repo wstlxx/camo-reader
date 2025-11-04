@@ -16,7 +16,8 @@ glow = "0.13.0"
 # --- NEW / UPDATED DEPENDENCIES ---
 # FIX: Corrected glutin version to 0.32.3
 glutin = { version = "0.32.3", features = ["wgl"] } # wgl feature is for Windows
-glutin-winit = "0.4.2"
+# FIX: Downgraded glutin-winit to be compatible with glutin 0.32.3
+glutin-winit = "0.2.0"
 raw-window-handle = "0.6.0"
 # --- END NEW ---
 

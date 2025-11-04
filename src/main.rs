@@ -1,34 +1,37 @@
 // Set this to hide the console window that normally appears on Windows
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use egui::{FontId, Label, RichText, Rgba, ScrollArea}; // FIX: Removed unused 'Sense'
+use egui::{FontId, Label, RichText, Rgba, ScrollArea};
 use egui_winit::State;
 use egui_glow::EguiGlow;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use glow::HasContext;
-use ini::Ini; // FIX: This import is correct, the error was downstream.
+use ini::Ini;
 use once_cell::sync::OnceCell;
-// FIX: Removed unused 'HashMap'
 use std::env;
 use std::fs;
-use std::rc::Rc;
-use std::sync::mpsc::{self}; // FIX: Removed unused 'Receiver'
-use std::sync::Arc; // FIX: Added Arc for EguiGlow
+// FIX: Removed unused 'Rc'
+use std::sync::mpsc::{self};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tray_item::{IconSource, TrayItem};
-use winit::dpi::{LogicalPosition, LogicalSize}; // FIX: Removed unused Physical imports
+use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy}; // FIX: Removed unused 'EventLoop'
+use winit::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 use winit::platform::windows::WindowBuilderExtWindows;
-use winit::window::{WindowBuilder, WindowLevel}; // FIX: Removed unused 'Window' and 'WindowId'
+use winit::window::{WindowBuilder, WindowLevel};
 
 // --- FIX: Add new imports for glutin/GL setup ---
-use glutin::context::{ContextAttributesBuilder, PossiblyCurrentContext};
+// FIX: Removed 'PossiblyCurrentContext' as it was unused
+use glutin::context::{ContextAttributesBuilder};
+// FIX: Removed 'NotCurrentGlContextSurfaceAccessor' as it's not in this glutin version
 use glutin::display::GetGlDisplay;
-use glutin::prelude::{GlDisplay, NotCurrentGlContextSurfaceAccessor};
-use glutin::surface::{GlSurface, Surface, SurfaceAttributesBuilder, WindowSurface};
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use glutin::prelude::{GlDisplay};
+// FIX: Removed unused 'Surface'
+use glutin::surface::{GlSurface, SurfaceAttributesBuilder, WindowSurface};
+// FIX: Removed unused 'HasDisplayHandle'
+use raw_window_handle::{HasWindowHandle};
 
 // --- Configuration Struct ---
 struct Config {
@@ -99,7 +102,8 @@ fn find_and_load_latest_txt() -> String {
 
     match latest_file {
         Some(path) => fs::read_to_string(path).unwrap_or_else(|e| format!("Error reading file: {}", e)),
-        None => "No .txt files found in this directory.\nCreate one and restart.".to-string(),
+        // FIX: Corrected typo 'to-string()' to 'to_string()'
+        None => "No .txt files found in this directory.\nCreate one and restart.".to_string(),
     }
 }
 
@@ -136,8 +140,8 @@ fn main() {
         .with_position(LogicalPosition::new(config.x, config.y))
         .with_inner_size(LogicalSize::new(config.width, config.height));
 
-    // FIX: Renamed 'with_undraggable_on_click' to 'with_undraggable'
-    let window_builder = window_builder.with_undraggable(true);
+    // FIX: Renamed 'with_undraggable' back to 'with_undraggable_on_click'
+    let window_builder = window_builder.with_undraggable_on_click(true);
 
     // --- FIX: This is the new, correct GL/Window setup ---
     // 1. Build window and GL config
@@ -173,7 +177,7 @@ fn main() {
     // 5. Load Glow
     let glow = unsafe {
         // FIX: Use 'from_loader_function' (not ..._arr) and load from 'gl_display'
-        glow::Context::from_loader_function(|s| gl_display.get_proc_address(s))
+        gl_display.get_proc_address(s))
     };
     // --- End new GL setup ---
 
@@ -259,9 +263,11 @@ fn main() {
                     is_visible = !is_visible;
                     window.set_visible(is_visible);
                     if is_visible {
-                        window.set_undraggable(false);
+                        // FIX: Renamed 'set_undraggable' to 'set_undraggable_on_click'
+                        window.set_undraggable_on_click(false);
                     } else {
-                        window.set_undraggable(true);
+                        // FIX: Renamed 'set_undraggable' to 'set_undraggable_on_click'
+                        window.set_undraggable_on_click(true);
                     }
                 }
                 UserEvent::PageUp => {
@@ -303,10 +309,12 @@ fn main() {
                          window.request_redraw();
                     }
                     WindowEvent::MouseInput { .. } => {
-                        window.set_undraggable(false);
+                        // FIX: Renamed 'set_undraggable' to 'set_undraggable_on_click'
+                        window.set_undraggable_on_click(false);
                     }
                     WindowEvent::CursorLeft { .. } => {
-                        window.set_undraggable(true);
+                        // FIX: Renamed 'set_undraggable' to 'set_undraggable_on_click'
+                        window.set_undraggable_on_click(true);
                     }
                     
                     // FIX: 'RedrawRequested' is a WindowEvent, so it must be handled here.
