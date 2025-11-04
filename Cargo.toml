@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ini = "3.0.0"         # For reading the config.ini file
+ini = "2.0.0"         # For reading the config.ini file
 winit = "0.29.15"     # Core windowing library
 egui = "0.27.2"       # For simple text rendering
 egui-winit = "0.27.2" # Integrates egui with winit
