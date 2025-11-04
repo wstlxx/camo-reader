@@ -33,4 +33,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: camo-reader-windows
-        path: target/release/camo_reader.exe # Updated to match your project name
+        path: target/release/camo-reader.exe # Updated to match your project name
