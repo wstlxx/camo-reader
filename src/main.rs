@@ -136,7 +136,7 @@ impl eframe::App for CamoReaderApp {
             self.config.text_alpha as f32 / 255.0,
         );
 
-        let frame_style = Frame::NONE.fill(egui::Color32::TRANSPARENT);
+        let frame_style = Frame::central_panel(&ctx.style()).fill(egui::Color32::TRANSPARENT);
 
         egui::CentralPanel::default().frame(frame_style).show(ctx, |ui| {
             let scroll_area = ScrollArea::vertical()
@@ -157,6 +157,10 @@ impl eframe::App for CamoReaderApp {
             state.store(ctx, scroll_area.id);
             self.scroll_offset = state.offset.y;
         });
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
     }
 }
 
@@ -247,7 +251,8 @@ fn main() {
             .with_position(egui::pos2(config.x, config.y))
             .with_decorations(false)
             .with_transparent(true)
-            .with_always_on_top(),
+            .with_always_on_top()
+            .with_mouse_passthrough(true),
         ..Default::default()
     };
 
