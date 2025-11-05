@@ -14,6 +14,7 @@ use std::time::{Duration, SystemTime};
 use tray_item::{IconSource, TrayItem};
 use std::sync::Mutex;
 use log::{info, error};
+use single_instance::SingleInstance;
 
 // --- Configuration Struct ---
 struct Config {
@@ -171,6 +172,12 @@ fn main() {
         .target(env_logger::Target::Pipe(Box::new(File::create("camo-reader.log").unwrap())))
         .init();
     info!("Starting Camo Reader");
+
+    let instance = SingleInstance::new("camo-reader").unwrap();
+    if !instance.is_single() {
+        error!("Another instance of Camo Reader is already running. Exiting.");
+        return;
+    }
 
     let (tx, rx) = mpsc::channel();
     EVENT_RECEIVER.set(Mutex::new(rx)).unwrap();

@@ -12,6 +12,7 @@ configparser = "3.0.0"
 log = "0.4.28"
 env_logger = "0.11.3"
 once_cell = "1.21.3"
+single-instance = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
 tray-item = "0.10.0"
