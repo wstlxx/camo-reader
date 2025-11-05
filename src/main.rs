@@ -13,7 +13,7 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime};
 use tray_item::{IconSource, TrayItem};
 use std::sync::Mutex;
-use log::{info, error};
+use log::{info, error, warn};
 use single_instance::SingleInstance;
 
 // --- Configuration Struct ---
@@ -195,7 +195,7 @@ fn main() {
         ) {
             Ok(tray) => tray,
             Err(e) => {
-                error!("Failed to create tray icon: {}", e);
+                warn!("Failed to create tray icon: {}", e);
                 return;
             }
         };
@@ -207,6 +207,11 @@ fn main() {
         })
         .unwrap();
         info!("Tray menu items added");
+        
+        // Keep the tray thread alive
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+        }
     });
 
     // --- Set up Global Hotkeys ---
@@ -215,24 +220,24 @@ fn main() {
         let manager = match GlobalHotKeyManager::new() {
             Ok(manager) => manager,
             Err(e) => {
-                error!("Failed to create hotkey manager: {}", e);
+                warn!("Failed to create hotkey manager: {}", e);
                 return;
             }
         };
         info!("Hotkey manager created");
         
-        let toggle_visibility_key = HotKey::new(Some(Modifiers::CONTROL), Code::F1);
+        let toggle_visibility_key = HotKey::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::F1);
         let page_up_key = HotKey::new(None, Code::F3);
         let page_down_key = HotKey::new(None, Code::F4);
 
         if let Err(e) = manager.register(toggle_visibility_key) {
-            error!("Failed to register toggle visibility hotkey: {}", e);
+            warn!("Failed to register toggle visibility hotkey: {}", e);
         }
         if let Err(e) = manager.register(page_up_key) {
-            error!("Failed to register page up hotkey: {}", e);
+            warn!("Failed to register page up hotkey: {}", e);
         }
         if let Err(e) = manager.register(page_down_key) {
-            error!("Failed to register page down hotkey: {}", e);
+            warn!("Failed to register page down hotkey: {}", e);
         }
         info!("Hotkeys registered");
 
@@ -272,7 +277,7 @@ fn main() {
                 text_content,
                 config,
                 scroll_offset: 0.0,
-                is_visible: false,
+                is_visible: true,
             }))
         }),
     ) {
