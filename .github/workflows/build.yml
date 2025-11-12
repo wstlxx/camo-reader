@@ -2,38 +2,6 @@ name: Build CamoReader
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  build:
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Restore
-        run: dotnet restore src/CamoReader.csproj
-
-      - name: Build
-        run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./artifacts
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: camo-reader-artifacts
-          path: ./artifacts
-name: Build Camo-Reader
-
-on:
-  push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
@@ -42,61 +10,60 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
-        
-    - name: Restore dependencies
-      run: dotnet restore src/CamoReader.csproj
-      
-    - name: Build
-      run: dotnet build src/CamoReader.csproj --configuration Release --no-restore
-      
-    - name: Publish
-      run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
-      
-    - name: Create config.ini
-      run: |
-        echo "; Camo-Reader Configuration" > ./publish/config.ini
-        echo "WindowPosX = 100" >> ./publish/config.ini
-        echo "WindowPosY = 100" >> ./publish/config.ini
-        echo "WindowWidth = 800" >> ./publish/config.ini
-        echo "WindowHeight = 200" >> ./publish/config.ini
-        echo "TextSize = 14" >> ./publish/config.ini
-        echo "TextFilePath = book.txt" >> ./publish/config.ini
-        echo "BrightnessShiftRatio = 50" >> ./publish/config.ini
-        echo "ColorShiftRatio = 50" >> ./publish/config.ini
-      shell: bash
-      
-    - name: Create sample book.txt
-      run: |
-        echo "Welcome to Camo-Reader!" > ./publish/book.txt
-        echo "" >> ./publish/book.txt
-        echo "This is a sample text file. Replace this with your own content." >> ./publish/book.txt
-        echo "" >> ./publish/book.txt
-        echo "Use F3 and F4 to navigate between pages." >> ./publish/book.txt
-        echo "Use F1 to show/hide the overlay." >> ./publish/book.txt
-      shell: bash
-      
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: CamoReader-Windows
-        path: ./publish/
-        
-    - name: Create Release ZIP
-      run: |
-        Compress-Archive -Path ./publish/* -DestinationPath CamoReader-Windows.zip
-      shell: pwsh
-      
-    - name: Upload Release ZIP
-      uses: actions/upload-artifact@v4
-      with:
-        name: CamoReader-Release-ZIP
-        path: CamoReader-Windows.zip
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore src/CamoReader.csproj
+
+      - name: Build
+        run: dotnet build src/CamoReader.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./publish
+
+      - name: Create config.ini
+        run: |
+          echo "; Camo-Reader Configuration" > ./publish/config.ini
+          echo "WindowPosX = 100" >> ./publish/config.ini
+          echo "WindowPosY = 100" >> ./publish/config.ini
+          echo "WindowWidth = 800" >> ./publish/config.ini
+          echo "WindowHeight = 200" >> ./publish/config.ini
+          echo "TextSize = 14" >> ./publish/config.ini
+          echo "TextFilePath = book.txt" >> ./publish/config.ini
+          echo "BrightnessShiftRatio = 50" >> ./publish/config.ini
+          echo "ColorShiftRatio = 50" >> ./publish/config.ini
+        shell: bash
+
+      - name: Create sample book.txt
+        run: |
+          echo "" >> ./publish/book.txt
+          echo "This is a sample text file. Replace this with your own content." >> ./publish/book.txt
+          echo "" >> ./publish/book.txt
+          echo "Use F3 and F4 to navigate between pages." >> ./publish/book.txt
+          echo "Use F1 to show/hide the overlay." >> ./publish/book.txt
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CamoReader-Windows
+          path: ./publish/
+
+      - name: Create Release ZIP
+        run: |
+          Compress-Archive -Path ./publish/* -DestinationPath CamoReader-Windows.zip
+        shell: pwsh
+
+      - name: Upload Release ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: CamoReader-Release-ZIP
+          path: CamoReader-Windows.zip
