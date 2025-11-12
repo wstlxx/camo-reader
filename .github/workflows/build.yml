@@ -24,7 +24,6 @@ jobs:
         run: dotnet nuget locals all --clear
         shell: pwsh
       
-      # --- NEW STEP: Delete the 'obj' and 'bin' folders ---
       - name: Clean project
         run: dotnet clean src/CamoReader.csproj --configuration Release
         shell: pwsh
@@ -36,9 +35,9 @@ jobs:
           echo "------------------------------------------------"
         shell: pwsh
       
-      # --- MODIFIED STEP: Forcing BOTH properties on the command line ---
+      # --- MODIFIED STEP: Removed '--no-restore' ---
       - name: Build
-        run: dotnet build src/CamoReader.csproj --configuration Release --no-restore /p:CsWinRTIncludesPlatformXML=false /p:CsWinRTTarget=desktop
+        run: dotnet build src/CamoReader.csproj --configuration Release /p:CsWinRTIncludesPlatformXML=false /p:CsWinRTTarget=desktop
 
       - name: Publish
         run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./publish
