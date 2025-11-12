@@ -11,17 +11,12 @@
     <Nullable>enable</Nullable>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     
-    <!-- FIX: This is required for the unsafe block in CalculateBrightness -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-
-  </PropertyGroup>
+    </PropertyGroup>
 
   <ItemGroup>
     <None Update="app.manifest">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <PackageReference Include="SharpDX" Version="4.2.0" />
-    <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
-    <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
-  </ItemGroup>
+    
+    </ItemGroup>
 </Project>

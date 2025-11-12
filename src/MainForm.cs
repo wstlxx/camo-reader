@@ -7,9 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-using SharpDX.Direct3D11;
-using SharpDX.DXGI;
-using Device = SharpDX.Direct3D11.Device;
+// --- REMOVED ALL SHARPDX and WINRT 'using' statements ---
 
 namespace CamoReader
 {
@@ -35,13 +33,14 @@ namespace CamoReader
         #endregion
 
         #region Fields
+        // FIX: Initialized fields to `null!` to satisfy nullability warnings
         private NotifyIcon trayIcon = null!;
         private ConfigManager config = null!;
         private List<string> textPages = null!;
         private int currentPage = 0;
-        private Color textColor = Color.White;
+        private Color textColor = Color.White; // Default to white
         private Font textFont = null!;
-        private Device d3dDevice = null!;
+        // --- REMOVED d3dDevice field ---
         #endregion
 
         public MainForm()
@@ -51,7 +50,7 @@ namespace CamoReader
             SetupWindow();
             SetupTrayIcon();
             RegisterHotkeys();
-            InitializeD3D();
+            // --- REMOVED InitializeD3D() ---
             LoadAndPaginateText();
         }
 
@@ -60,7 +59,7 @@ namespace CamoReader
             this.SuspendLayout();
             this.AutoScaleDimensions = new SizeF(6F, 13F);
             this.AutoScaleMode = AutoScaleMode.Font;
-            this.BackColor = Color.Black;
+            this.BackColor = Color.Black; // This will be the transparent color
             this.ClientSize = new Size(800, 200);
             this.FormBorderStyle = FormBorderStyle.None;
             this.Name = "MainForm";
@@ -74,6 +73,7 @@ namespace CamoReader
             get
             {
                 CreateParams cp = base.CreateParams;
+                // WS_EX_LAYERED is required for TransparencyKey
                 cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
                 return cp;
             }
@@ -85,9 +85,15 @@ namespace CamoReader
             
             this.Location = new Point(config.WindowPosX, config.WindowPosY);
             this.Size = new Size(config.WindowWidth, config.WindowHeight);
-            this.Opacity = 0.75;
+            
+            // --- FIX: Use TransparencyKey for a fully transparent background ---
+            this.TransparencyKey = Color.Black;
+            // --- REMOVED Opacity property ---
             
             textFont = new Font("Arial", config.TextSize);
+            
+            // --- FIX: Set a default text color (no longer adaptive) ---
+            textColor = Color.White;
         }
 
         private void SetupWindow()
@@ -137,7 +143,8 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F4, 0, VK_F4);
         }
 
-        protected override void WndProc(ref System.Windows.Forms.Message m)
+        // --- FIX: Changed back to 'Message' as SharpDX ambiguity is gone ---
+        protected override void WndProc(ref Message m)
         {
             base.WndProc(ref m);
 
@@ -159,17 +166,7 @@ namespace CamoReader
             }
         }
 
-        private void InitializeD3D()
-        {
-            try
-            {
-                d3dDevice = new Device(SharpDX.Direct3D.DriverType.Hardware, DeviceCreationFlags.BgraSupport);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Failed to initialize Direct3D: {ex.Message}", "Error");
-            }
-        }
+        // --- DELETED InitializeD3D() method ---
 
         private void LoadAndPaginateText()
         {
@@ -229,183 +226,35 @@ namespace CamoReader
         private void ToggleVisibility()
         {
             this.Visible = !this.Visible;
-            if (this.Visible)
-            {
-                UpdateTextColorAsync();
-            }
+            // --- REMOVED UpdateTextColorAsync() call ---
         }
 
         private void PreviousPage()
         {
             if (textPages == null || textPages.Count == 0) return;
             currentPage = (currentPage - 1 + textPages.Count) % textPages.Count;
-            UpdateTextColorAsync();
+            this.Invalidate(); // Redraw with the new page
         }
 
         private void NextPage()
         {
             if (textPages == null || textPages.Count == 0) return;
             currentPage = (currentPage + 1) % textPages.Count;
-            UpdateTextColorAsync();
+            this.Invalidate(); // Redraw with the new page
         }
 
-        private async void UpdateTextColorAsync()
-        {
-            if (config == null) return;
-            Color avgColor;
-            try
-            {
-                // This will now throw an exception if it fails
-                avgColor = await CaptureAndAnalyzeBackground();
-            }
-            catch(Exception ex)
-            {
-                // FIX: This catch block will now execute and show you the error
-                textPages = new List<string> { $"Screen capture failed:\n{ex.Message}\n\nThis may be a driver or permissions issue. Or, your screen resolution may have changed." };
-                currentPage = 0;
-                textColor = Color.Red;
-                this.Invalidate();
-                return;
-            }
+        // --- DELETED UpdateTextColorAsync() method ---
+        // --- DELETED CaptureAndAnalyzeBackground() method ---
+        // --- DELETED AnalyzeTexture() method ---
 
-            // 1. Invert the background color
-            int invR = 255 - avgColor.R;
-            int invG = 255 - avgColor.G;
-            int invB = 255 - avgColor.B;
-
-            // 2. Calculate the brightness of the inverted color (this is our monochrome target)
-            int monoBrightness = (int)(invR * 0.299 + invG * 0.587 + invB * 0.114);
-
-            // 3. Blend between full color inverse and monochrome inverse based on ColorShiftRatio
-            // 0 = full inverse color, 100 = full monochrome (greyscale)
-            double colorRatio = (double)config.ColorShiftRatio / 100.0;
-            double inverseColorRatio = 1.0 - colorRatio;
-
-            int r = (int)(invR * inverseColorRatio + monoBrightness * colorRatio);
-            int g = (int)(invG * inverseColorRatio + monoBrightness * colorRatio);
-            int b = (int)(invB * inverseColorRatio + monoBrightness * colorRatio);
-
-            // 4. Adjust the final brightness using BrightnessShiftRatio
-            // 50 = no change (1.0x), 0 = black (0.0x), 100 = max brightness (2.0x)
-            double brightnessFactor = (double)config.BrightnessShiftRatio / 50.0;
-
-            r = Math.Min(255, (int)(r * brightnessFactor));
-            g = Math.Min(255, (int)(g * brightnessFactor));
-            b = Math.Min(255, (int)(b * brightnessFactor));
-
-            textColor = Color.FromArgb(r, g, b);
-            this.Invalidate();
-        }
-
-        private async Task<Color> CaptureAndAnalyzeBackground()
-        {
-            return await Task.Run(() =>
-            {
-                // FIX: Removed the try/catch block from here to let errors bubble up
-                using (var factory = new Factory1())
-                using (var adapter = factory.GetAdapter1(0))
-                using (var output = adapter.GetOutput(0))
-                using (var output1 = output.QueryInterface<Output1>())
-                {
-                    int width = output1.Description.DesktopBounds.Right - output1.Description.DesktopBounds.Left;
-                    int height = output1.Description.DesktopBounds.Bottom - output1.Description.DesktopBounds.Top;
-
-                    var textureDesc = new Texture2DDescription
-                    {
-                        CpuAccessFlags = CpuAccessFlags.Read,
-                        BindFlags = BindFlags.None,
-                        Format = Format.B8G8R8A8_UNorm,
-                        Width = width,
-                        Height = height,
-                        OptionFlags = ResourceOptionFlags.None,
-                        MipLevels = 1,
-                        ArraySize = 1,
-                        SampleDescription = { Count = 1, Quality = 0 },
-                        Usage = ResourceUsage.Staging
-                    };
-
-                    using (var stagingTexture = new Texture2D(d3dDevice, textureDesc))
-                    using (var duplicatedOutput = output1.DuplicateOutput(d3dDevice))
-                    {
-                        SharpDX.DXGI.Resource screenResource = null;
-                        try
-                        {
-                            // FIX: Explicitly declare 'frameInfo' to fix CS8600 warning
-                            var result = duplicatedOutput.TryAcquireNextFrame(100, out OutputDuplicateFrameInformation frameInfo, out screenResource);
-                            
-                            if (!result.Success || screenResource == null)
-                            {
-                                duplicatedOutput.ReleaseFrame();
-                                throw new Exception($"Failed to acquire next frame. Result: {result.Code}. Screen might be locked.");
-                            }
-
-                            using (var screenTexture = screenResource.QueryInterface<Texture2D>())
-                            {
-                                d3dDevice.ImmediateContext.CopyResource(screenTexture, stagingTexture);
-                            }
-
-                            var color = AnalyzeTexture(stagingTexture); 
-                            
-                            duplicatedOutput.ReleaseFrame();
-                            return color;
-                        }
-                        finally
-                        {
-                            screenResource?.Dispose();
-                        }
-                    }
-                }
-            });
-        }
-        
-        private Color AnalyzeTexture(Texture2D texture)
-        {
-            var desc = texture.Description;
-            var context = d3dDevice.ImmediateContext;
-            
-            var dataBox = context.MapSubresource(texture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
-            
-            long totalR = 0, totalG = 0, totalB = 0;
-            int pixelCount = 0;
-            
-            unsafe
-            {
-                byte* ptr = (byte*)dataBox.DataPointer;
-                int stride = dataBox.RowPitch;
-                
-                int step = Math.Max(1, Math.Min(desc.Width, desc.Height) / 100); 
-                
-                for (int y = 0; y < desc.Height; y += step)
-                {
-                    byte* row = ptr + (y * stride);
-                    for (int x = 0; x < desc.Width; x += step)
-                    {
-                        byte b = row[x * 4];
-                        byte g = row[x * 4 + 1];
-                        byte r = row[x * 4 + 2];
-                        
-                        totalR += r;
-                        totalG += g;
-                        totalB += b;
-                        pixelCount++;
-                    }
-                }
-            }
-            
-            context.UnmapSubresource(texture, 0);
-            
-            if (pixelCount == 0) return Color.FromArgb(127, 127, 127); // Default gray
-
-            return Color.FromArgb(
-                (int)(totalR / pixelCount),
-                (int)(totalG / pixelCount),
-                (int)(totalB / pixelCount)
-            );
-        }
-
+        // FIX: Made sender nullable to fix nullability warning
         private void MainForm_Paint(object? sender, PaintEventArgs e)
         {
             if (textPages == null || textPages.Count == 0) return;
+
+            // Prevent crash if textPages is empty or index is out of bounds
+            if (currentPage >= textPages.Count) currentPage = 0; 
+            if (textPages.Count == 0) return; 
 
             using (SolidBrush brush = new SolidBrush(textColor))
             {
@@ -427,9 +276,11 @@ namespace CamoReader
             UnregisterHotKey(this.Handle, HOTKEY_F4);
             
             trayIcon?.Dispose();
-            d3dDevice?.Dispose();
+            // --- REMOVED d3dDevice?.Dispose() ---
             
             base.OnFormClosing(e);
         }
+
+        // --- DELETED duplicate Main() method ---
     }
 }
