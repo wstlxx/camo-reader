@@ -22,19 +22,16 @@ namespace CamoReader
         private const int HOTKEY_F1 = 1;
         private const int HOTKEY_F3 = 2;
         private const int HOTKEY_F4 = 3;
-        // FIX: Added F5 and F6
         private const int HOTKEY_F5 = 4;
         private const int HOTKEY_F6 = 5;
 
         private const uint VK_F1 = 0x70;
         private const uint VK_F3 = 0x72;
         private const uint VK_F4 = 0x73;
-        // FIX: Added F5 and F6
         private const uint VK_F5 = 0x74;
         private const uint VK_F6 = 0x75;
 
         private const int WS_EX_LAYERED = 0x80000;
-        // --- REMOVED WS_EX_TRANSPARENT to allow clicking/dragging ---
         #endregion
 
         #region Fields
@@ -45,7 +42,6 @@ namespace CamoReader
         private Color textColor = Color.White;
         private Font textFont = null!;
         
-        // FIX: Added fields for window dragging
         private bool isDragging = false;
         private Point dragStartPoint = Point.Empty;
         #endregion
@@ -79,8 +75,6 @@ namespace CamoReader
             get
             {
                 CreateParams cp = base.CreateParams;
-                // WS_EX_LAYERED is required for TransparencyKey
-                // FIX: REMOVED WS_EX_TRANSPARENT so the window can be clicked
                 cp.ExStyle |= WS_EX_LAYERED; 
                 return cp;
             }
@@ -93,9 +87,7 @@ namespace CamoReader
             this.Location = new Point(config.WindowPosX, config.WindowPosY);
             this.Size = new Size(config.WindowWidth, config.WindowHeight);
             
-            // FIX: Use TransparencyKey to make background invisible
             this.TransparencyKey = Color.Black;
-            // FIX: Use Opacity to make text (and whole window) semi-transparent
             this.Opacity = (double)config.TextOpacity / 100.0;
             
             textFont = new Font("Arial", config.TextSize);
@@ -107,10 +99,10 @@ namespace CamoReader
             this.DoubleBuffered = true;
             this.Paint += MainForm_Paint;
             
-            // FIX: Add mouse handlers for dragging
-            this.MouseDown += OnMouseDown;
-            this.MouseMove += OnMouseMove;
-            this.MouseUp += OnMouseUp;
+            // FIX: Correctly hook up the event handlers
+            this.MouseDown += MainForm_MouseDown;
+            this.MouseMove += MainForm_MouseMove;
+            this.MouseUp += MainForm_MouseUp;
         }
 
         private void SetupTrayIcon()
@@ -152,7 +144,6 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F1, 0, VK_F1);
             RegisterHotKey(this.Handle, HOTKEY_F3, 0, VK_F3);
             RegisterHotKey(this.Handle, HOTKEY_F4, 0, VK_F4);
-            // FIX: Register F5 and F6
             RegisterHotKey(this.Handle, HOTKEY_F5, 0, VK_F5);
             RegisterHotKey(this.Handle, HOTKEY_F6, 0, VK_F6);
         }
@@ -175,7 +166,6 @@ namespace CamoReader
                     case HOTKEY_F4:
                         NextPage();
                         break;
-                    // FIX: Handle F5 and F6
                     case HOTKEY_F5:
                         DecreaseOpacity();
                         break;
@@ -260,10 +250,9 @@ namespace CamoReader
             this.Invalidate();
         }
 
-        // --- FIX: New methods for opacity control ---
         private void IncreaseOpacity()
         {
-            if (this.Opacity <= 0.95) // Use <= 0.95 to avoid precision issues
+            if (this.Opacity <= 0.95) 
             {
                 this.Opacity += 0.05;
             }
@@ -271,17 +260,15 @@ namespace CamoReader
 
         private void DecreaseOpacity()
         {
-            // Don't let it become completely invisible, min 5%
             if (this.Opacity >= 0.10) 
             {
                 this.Opacity -= 0.05;
             }
         }
         
-        // --- FIX: New methods for window dragging ---
-        protected override void OnMouseDown(MouseEventArgs e)
+        // --- FIX: Changed methods to be event handlers (no 'override', added 'sender') ---
+        private void MainForm_MouseDown(object? sender, MouseEventArgs e)
         {
-            base.OnMouseDown(e);
             if (e.Button == MouseButtons.Left)
             {
                 isDragging = true;
@@ -289,9 +276,8 @@ namespace CamoReader
             }
         }
 
-        protected override void OnMouseMove(MouseEventArgs e)
+        private void MainForm_MouseMove(object? sender, MouseEventArgs e)
         {
-            base.OnMouseMove(e);
             if (isDragging)
             {
                 Point currentPoint = PointToScreen(new Point(e.X, e.Y));
@@ -299,15 +285,14 @@ namespace CamoReader
             }
         }
 
-        protected override void OnMouseUp(MouseEventArgs e)
+        private void MainForm_MouseUp(object? sender, MouseEventArgs e)
         {
-            base.OnMouseUp(e);
             if (e.Button == MouseButtons.Left)
             {
                 isDragging = false;
             }
         }
-        // --- End of new drag methods ---
+        // --- End of drag methods ---
 
         // FIX: Made sender nullable to fix warning
         private void MainForm_Paint(object? sender, PaintEventArgs e)
@@ -330,12 +315,12 @@ namespace CamoReader
             }
         }
 
+        // FIX: This method *is* an override
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             UnregisterHotKey(this.Handle, HOTKEY_F1);
             UnregisterHotKey(this.Handle, HOTKEY_F3);
             UnregisterHotKey(this.Handle, HOTKEY_F4);
-            // FIX: Unregister F5 and F6
             UnregisterHotKey(this.Handle, HOTKEY_F5);
             UnregisterHotKey(this.Handle, HOTKEY_F6);
             
