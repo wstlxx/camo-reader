@@ -7,8 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-// --- REMOVED WinRT 'using' statements ---
-
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using Device = SharpDX.Direct3D11.Device;
@@ -37,13 +35,14 @@ namespace CamoReader
         #endregion
 
         #region Fields
-        private NotifyIcon trayIcon;
-        private ConfigManager config;
-        private List<string> textPages;
+        // FIX: Initialized fields to `null!` to satisfy CS8618
+        private NotifyIcon trayIcon = null!;
+        private ConfigManager config = null!;
+        private List<string> textPages = null!;
         private int currentPage = 0;
         private Color textColor = Color.White;
-        private Font textFont;
-        private Device d3dDevice;
+        private Font textFont = null!;
+        private Device d3dDevice = null!;
         #endregion
 
         public MainForm()
@@ -139,7 +138,7 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F4, 0, VK_F4);
         }
 
-        // --- FIX: Specified System.Windows.Forms.Message ---
+        // FIX: Specified System.Windows.Forms.Message to fix CS0104
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             base.WndProc(ref m);
@@ -178,7 +177,7 @@ namespace CamoReader
         {
             textPages = new List<string>();
 
-            if (!File.Exists(config.TextFilePath))
+            if (config == null || !File.Exists(config.TextFilePath))
             {
                 textPages.Add("Text file not found.\nCheck config.ini");
                 return;
@@ -240,20 +239,21 @@ namespace CamoReader
 
         private void PreviousPage()
         {
-            if (textPages.Count == 0) return;
+            if (textPages == null || textPages.Count == 0) return;
             currentPage = (currentPage - 1 + textPages.Count) % textPages.Count;
             UpdateTextColorAsync();
         }
 
         private void NextPage()
         {
-            if (textPages.Count == 0) return;
+            if (textPages == null || textPages.Count == 0) return;
             currentPage = (currentPage + 1) % textPages.Count;
             UpdateTextColorAsync();
         }
 
         private async void UpdateTextColorAsync()
         {
+            if (config == null) return;
             try
             {
                 double avgBrightness = await CaptureAndAnalyzeBackground();
@@ -280,13 +280,17 @@ namespace CamoReader
                     using (var output = adapter.GetOutput(0))
                     using (var output1 = output.QueryInterface<Output1>())
                     {
+                        // FIX: Use Left/Right/Bottom/Top to calculate Width/Height
+                        int width = output1.Description.DesktopBounds.Right - output1.Description.DesktopBounds.Left;
+                        int height = output1.Description.DesktopBounds.Bottom - output1.Description.DesktopBounds.Top;
+
                         var textureDesc = new Texture2DDescription
                         {
                             CpuAccessFlags = CpuAccessFlags.Read,
                             BindFlags = BindFlags.None,
                             Format = Format.B8G8R8A8_UNorm,
-                            Width = output1.Description.DesktopBounds.Width,
-                            Height = output1.Description.DesktopBounds.Height,
+                            Width = width,
+                            Height = height,
                             OptionFlags = ResourceOptionFlags.None,
                             MipLevels = 1,
                             ArraySize = 1,
@@ -342,6 +346,7 @@ namespace CamoReader
             long totalBrightness = 0;
             int pixelCount = 0;
             
+            // FIX: This block requires <AllowUnsafeBlocks>true</AllowUnsafeBlocks> in the .csproj
             unsafe
             {
                 byte* ptr = (byte*)dataBox.DataPointer;
@@ -370,9 +375,10 @@ namespace CamoReader
             return pixelCount > 0 ? (double)totalBrightness / pixelCount : 127;
         }
 
-        private void MainForm_Paint(object sender, PaintEventArgs e)
+        // FIX: Made sender nullable to fix CS8622
+        private void MainForm_Paint(object? sender, PaintEventArgs e)
         {
-            if (textPages.Count == 0) return;
+            if (textPages == null || textPages.Count == 0) return;
 
             using (SolidBrush brush = new SolidBrush(textColor))
             {
@@ -393,23 +399,14 @@ namespace CamoReader
             UnregisterHotKey(this.Handle, HOTKEY_F3);
             UnregisterHotKey(this.Handle, HOTKEY_F4);
             
-            trayIcon.Visible = false;
-            trayIcon.Dispose();
-            
+            trayIcon?.Dispose();
             d3dDevice?.Dispose();
             
             base.OnFormClosing(e);
         }
 
-        [STAThread]
-        static void Main()
-        {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
-        }
+        // FIX: Removed duplicate Main() method to fix CS0017
     }
     
-    // --- FIX: DELETED THE ENTIRE '#region Helper Classes' ---
-    // (This removed the duplicate ConfigManager and the old WinRT helpers)
+    // FIX: DELETED THE ENTIRE '#region Helper Classes' to fix CS0101
 }

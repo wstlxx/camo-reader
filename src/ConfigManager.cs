@@ -1,70 +1,81 @@
-using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Collections.Generic;
 
 namespace CamoReader
 {
-    /// <summary>
-    /// Minimal INI-like configuration manager for the app.
-    /// Supports simple key=value lines (comments starting with # or ; are ignored).
-    /// Values are kept in-memory and can be saved back to the file.
-    /// </summary>
     public class ConfigManager
     {
-        private readonly string _path;
-        private readonly Dictionary<string, string> _values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private string filePath;
+        private Dictionary<string, string> settings;
+
+        // FIX: Added all the public properties that MainForm.cs needs
+        public int WindowPosX { get; private set; }
+        public int WindowPosY { get; private set; }
+        public int WindowWidth { get; private set; }
+        public int WindowHeight { get; private set; }
+        public int TextSize { get; private set; }
+        public string TextFilePath { get; private set; }
+        public int BrightnessShiftRatio { get; private set; }
+        public int ColorShiftRatio { get; private set; }
 
         public ConfigManager(string path)
         {
-            _path = path;
-            Load();
+            filePath = path;
+            settings = new Dictionary<string, string>();
+            LoadConfig();
         }
 
-        private void Load()
+        private void LoadConfig()
         {
-            _values.Clear();
-            if (!File.Exists(_path)) return;
-
-            foreach (var raw in File.ReadAllLines(_path))
+            if (!File.Exists(filePath))
             {
-                var line = raw.Trim();
-                if (string.IsNullOrEmpty(line)) continue;
-                if (line.StartsWith("#") || line.StartsWith(";")) continue;
-
-                var idx = line.IndexOf('=');
-                if (idx <= 0) continue;
-
-                var key = line.Substring(0, idx).Trim();
-                var val = line.Substring(idx + 1).Trim();
-                _values[key] = val;
+                CreateDefaultConfig();
             }
-        }
 
-        public string? Get(string key, string? defaultValue = null)
-        {
-            if (_values.TryGetValue(key, out var v)) return v;
-            return defaultValue;
-        }
-
-        public void Set(string key, string value)
-        {
-            _values[key] = value;
-        }
-
-        public void Save()
-        {
-            try
+            foreach (string line in File.ReadAllLines(filePath))
             {
-                using var sw = new StreamWriter(_path, false);
-                foreach (var kv in _values)
+                if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith(";"))
+                    continue;
+
+                string[] parts = line.Split(new[] { '=' }, 2);
+                if (parts.Length == 2)
                 {
-                    sw.WriteLine($"{kv.Key}={kv.Value}");
+                    settings[parts[0].Trim()] = parts[1].Trim();
                 }
             }
-            catch (Exception)
-            {
-                // Swallow exceptions for now - caller may handle file permissions etc.
-            }
+
+            WindowPosX = GetInt("WindowPosX", 100);
+            WindowPosY = GetInt("WindowPosY", 100);
+            WindowWidth = GetInt("WindowWidth", 800);
+            WindowHeight = GetInt("WindowHeight", 200);
+            TextSize = GetInt("TextSize", 14);
+            TextFilePath = GetString("TextFilePath", "book.txt");
+            BrightnessShiftRatio = GetInt("BrightnessShiftRatio", 50);
+            ColorShiftRatio = GetInt("ColorShiftRatio", 50);
+        }
+
+        private void CreateDefaultConfig()
+        {
+            string defaultConfig = @"; Camo-Reader Configuration
+WindowPosX = 100
+WindowPosY = 100
+WindowWidth = 800
+WindowHeight = 200
+TextSize = 14
+TextFilePath = book.txt
+BrightnessShiftRatio = 50
+ColorShiftRatio = 50";
+            File.WriteAllText(filePath, defaultConfig);
+        }
+
+        private int GetInt(string key, int defaultValue)
+        {
+            return settings.ContainsKey(key) && int.TryParse(settings[key], out int val) ? val : defaultValue;
+        }
+
+        private string GetString(string key, string defaultValue)
+        {
+            return settings.ContainsKey(key) ? settings[key] : defaultValue;
         }
     }
 }
