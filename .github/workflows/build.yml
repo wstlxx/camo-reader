@@ -23,6 +23,15 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore src/CamoReader.csproj
 
+      # --- THIS IS THE NEW DEBUGGING STEP ---
+      - name: Display CSProj Content for Debugging
+        run: |
+          echo "--- Displaying src/CamoReader.csproj content ---"
+          type src\CamoReader.csproj
+          echo "------------------------------------------------"
+        shell: pwsh
+      # --- END OF NEW STEP ---
+
       - name: Build
         run: dotnet build src/CamoReader.csproj --configuration Release --no-restore
 
