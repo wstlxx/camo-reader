@@ -19,6 +19,9 @@ namespace CamoReader
         
         public int BrightnessShiftRatio { get; private set; }
         public int ColorShiftRatio { get; private set; }
+        
+        // FIX: Added TextOpacity
+        public int TextOpacity { get; private set; }
 
         public ConfigManager(string path)
         {
@@ -54,6 +57,8 @@ namespace CamoReader
             TextFilePath = GetString("TextFilePath", "book.txt");
             BrightnessShiftRatio = GetInt("BrightnessShiftRatio", 50);
             ColorShiftRatio = GetInt("ColorShiftRatio", 50);
+            // FIX: Load TextOpacity, default to 75
+            TextOpacity = GetInt("TextOpacity", 75);
         }
 
         private void CreateDefaultConfig()
@@ -66,13 +71,21 @@ WindowHeight = 200
 TextSize = 14
 TextFilePath = book.txt
 BrightnessShiftRatio = 50
-ColorShiftRatio = 50";
+ColorShiftRatio = 50
+TextOpacity = 75
+"; // Added TextOpacity
             File.WriteAllText(filePath, defaultConfig);
         }
 
         private int GetInt(string key, int defaultValue)
         {
-            return settings.ContainsKey(key) && int.TryParse(settings[key], out int val) ? val : defaultValue;
+            // Clamp opacity to a valid range
+            if (key == "TextOpacity")
+            {
+                int val = settings.ContainsKey(key) && int.TryParse(settings[key], out int oVal) ? oVal : defaultValue;
+                return Math.Max(0, Math.Min(100, val)); // Clamp 0-100
+            }
+            return settings.ContainsKey(key) && int.TryParse(settings[key], out int v) ? v : defaultValue;
         }
 
         private string GetString(string key, string defaultValue)

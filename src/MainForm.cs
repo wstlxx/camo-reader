@@ -7,8 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-// --- REMOVED ALL SHARPDX and WINRT 'using' statements ---
-
 namespace CamoReader
 {
     public partial class MainForm : Form
@@ -24,23 +22,32 @@ namespace CamoReader
         private const int HOTKEY_F1 = 1;
         private const int HOTKEY_F3 = 2;
         private const int HOTKEY_F4 = 3;
+        // FIX: Added F5 and F6
+        private const int HOTKEY_F5 = 4;
+        private const int HOTKEY_F6 = 5;
+
         private const uint VK_F1 = 0x70;
         private const uint VK_F3 = 0x72;
         private const uint VK_F4 = 0x73;
+        // FIX: Added F5 and F6
+        private const uint VK_F5 = 0x74;
+        private const uint VK_F6 = 0x75;
 
         private const int WS_EX_LAYERED = 0x80000;
-        private const int WS_EX_TRANSPARENT = 0x20;
+        // --- REMOVED WS_EX_TRANSPARENT to allow clicking/dragging ---
         #endregion
 
         #region Fields
-        // FIX: Initialized fields to `null!` to satisfy nullability warnings
         private NotifyIcon trayIcon = null!;
         private ConfigManager config = null!;
         private List<string> textPages = null!;
         private int currentPage = 0;
-        private Color textColor = Color.White; // Default to white
+        private Color textColor = Color.White;
         private Font textFont = null!;
-        // --- REMOVED d3dDevice field ---
+        
+        // FIX: Added fields for window dragging
+        private bool isDragging = false;
+        private Point dragStartPoint = Point.Empty;
         #endregion
 
         public MainForm()
@@ -50,7 +57,6 @@ namespace CamoReader
             SetupWindow();
             SetupTrayIcon();
             RegisterHotkeys();
-            // --- REMOVED InitializeD3D() ---
             LoadAndPaginateText();
         }
 
@@ -59,7 +65,7 @@ namespace CamoReader
             this.SuspendLayout();
             this.AutoScaleDimensions = new SizeF(6F, 13F);
             this.AutoScaleMode = AutoScaleMode.Font;
-            this.BackColor = Color.Black; // This will be the transparent color
+            this.BackColor = Color.Black; 
             this.ClientSize = new Size(800, 200);
             this.FormBorderStyle = FormBorderStyle.None;
             this.Name = "MainForm";
@@ -74,7 +80,8 @@ namespace CamoReader
             {
                 CreateParams cp = base.CreateParams;
                 // WS_EX_LAYERED is required for TransparencyKey
-                cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
+                // FIX: REMOVED WS_EX_TRANSPARENT so the window can be clicked
+                cp.ExStyle |= WS_EX_LAYERED; 
                 return cp;
             }
         }
@@ -86,13 +93,12 @@ namespace CamoReader
             this.Location = new Point(config.WindowPosX, config.WindowPosY);
             this.Size = new Size(config.WindowWidth, config.WindowHeight);
             
-            // --- FIX: Use TransparencyKey for a fully transparent background ---
+            // FIX: Use TransparencyKey to make background invisible
             this.TransparencyKey = Color.Black;
-            // --- REMOVED Opacity property ---
+            // FIX: Use Opacity to make text (and whole window) semi-transparent
+            this.Opacity = (double)config.TextOpacity / 100.0;
             
             textFont = new Font("Arial", config.TextSize);
-            
-            // --- FIX: Set a default text color (no longer adaptive) ---
             textColor = Color.White;
         }
 
@@ -100,6 +106,11 @@ namespace CamoReader
         {
             this.DoubleBuffered = true;
             this.Paint += MainForm_Paint;
+            
+            // FIX: Add mouse handlers for dragging
+            this.MouseDown += OnMouseDown;
+            this.MouseMove += OnMouseMove;
+            this.MouseUp += OnMouseUp;
         }
 
         private void SetupTrayIcon()
@@ -141,9 +152,11 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F1, 0, VK_F1);
             RegisterHotKey(this.Handle, HOTKEY_F3, 0, VK_F3);
             RegisterHotKey(this.Handle, HOTKEY_F4, 0, VK_F4);
+            // FIX: Register F5 and F6
+            RegisterHotKey(this.Handle, HOTKEY_F5, 0, VK_F5);
+            RegisterHotKey(this.Handle, HOTKEY_F6, 0, VK_F6);
         }
 
-        // --- FIX: Changed back to 'Message' as SharpDX ambiguity is gone ---
         protected override void WndProc(ref Message m)
         {
             base.WndProc(ref m);
@@ -162,11 +175,16 @@ namespace CamoReader
                     case HOTKEY_F4:
                         NextPage();
                         break;
+                    // FIX: Handle F5 and F6
+                    case HOTKEY_F5:
+                        DecreaseOpacity();
+                        break;
+                    case HOTKEY_F6:
+                        IncreaseOpacity();
+                        break;
                 }
             }
         }
-
-        // --- DELETED InitializeD3D() method ---
 
         private void LoadAndPaginateText()
         {
@@ -226,33 +244,76 @@ namespace CamoReader
         private void ToggleVisibility()
         {
             this.Visible = !this.Visible;
-            // --- REMOVED UpdateTextColorAsync() call ---
         }
 
         private void PreviousPage()
         {
             if (textPages == null || textPages.Count == 0) return;
             currentPage = (currentPage - 1 + textPages.Count) % textPages.Count;
-            this.Invalidate(); // Redraw with the new page
+            this.Invalidate();
         }
 
         private void NextPage()
         {
             if (textPages == null || textPages.Count == 0) return;
             currentPage = (currentPage + 1) % textPages.Count;
-            this.Invalidate(); // Redraw with the new page
+            this.Invalidate();
         }
 
-        // --- DELETED UpdateTextColorAsync() method ---
-        // --- DELETED CaptureAndAnalyzeBackground() method ---
-        // --- DELETED AnalyzeTexture() method ---
+        // --- FIX: New methods for opacity control ---
+        private void IncreaseOpacity()
+        {
+            if (this.Opacity <= 0.95) // Use <= 0.95 to avoid precision issues
+            {
+                this.Opacity += 0.05;
+            }
+        }
 
-        // FIX: Made sender nullable to fix nullability warning
+        private void DecreaseOpacity()
+        {
+            // Don't let it become completely invisible, min 5%
+            if (this.Opacity >= 0.10) 
+            {
+                this.Opacity -= 0.05;
+            }
+        }
+        
+        // --- FIX: New methods for window dragging ---
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left)
+            {
+                isDragging = true;
+                dragStartPoint = new Point(e.X, e.Y);
+            }
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (isDragging)
+            {
+                Point currentPoint = PointToScreen(new Point(e.X, e.Y));
+                this.Location = new Point(currentPoint.X - dragStartPoint.X, currentPoint.Y - dragStartPoint.Y);
+            }
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (e.Button == MouseButtons.Left)
+            {
+                isDragging = false;
+            }
+        }
+        // --- End of new drag methods ---
+
+        // FIX: Made sender nullable to fix warning
         private void MainForm_Paint(object? sender, PaintEventArgs e)
         {
             if (textPages == null || textPages.Count == 0) return;
 
-            // Prevent crash if textPages is empty or index is out of bounds
             if (currentPage >= textPages.Count) currentPage = 0; 
             if (textPages.Count == 0) return; 
 
@@ -274,13 +335,13 @@ namespace CamoReader
             UnregisterHotKey(this.Handle, HOTKEY_F1);
             UnregisterHotKey(this.Handle, HOTKEY_F3);
             UnregisterHotKey(this.Handle, HOTKEY_F4);
+            // FIX: Unregister F5 and F6
+            UnregisterHotKey(this.Handle, HOTKEY_F5);
+            UnregisterHotKey(this.Handle, HOTKEY_F6);
             
             trayIcon?.Dispose();
-            // --- REMOVED d3dDevice?.Dispose() ---
             
             base.OnFormClosing(e);
         }
-
-        // --- DELETED duplicate Main() method ---
     }
 }
