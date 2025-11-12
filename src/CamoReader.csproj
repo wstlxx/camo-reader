@@ -1,6 +1,5 @@
 
-<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -22,12 +21,17 @@
     <PackageReference Include="SharpDX" Version="4.2.0" />
     <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
     <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
+  </ItemGroup>
 
-    <!-- Windows Runtime / SDK contracts for Windows.Graphics.Capture types -->
+  <ItemGroup>
+    <!-- SharpDX for Direct3D interop used by MainForm.cs -->
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
+    <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
+
+    <!-- Windows Runtime packages for Windows.Graphics.Capture -->
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.22621.755" />
-
-    <!-- CsWinRT to enable WinRT projections when building/cross-compiling -->
-  <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.3.0" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>
