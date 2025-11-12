@@ -144,7 +144,7 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F4, 0, VK_F4);
         }
 
-        protected override void WndProc(ref Message m)
+        protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             base.WndProc(ref m);
 
