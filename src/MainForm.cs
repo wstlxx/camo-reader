@@ -35,7 +35,6 @@ namespace CamoReader
         #endregion
 
         #region Fields
-        // FIX: Initialized fields to `null!` to satisfy CS8618
         private NotifyIcon trayIcon = null!;
         private ConfigManager config = null!;
         private List<string> textPages = null!;
@@ -52,7 +51,7 @@ namespace CamoReader
             SetupWindow();
             SetupTrayIcon();
             RegisterHotkeys();
-            InitializeD3D(); // This is still needed for SharpDX
+            InitializeD3D();
             LoadAndPaginateText();
         }
 
@@ -138,7 +137,6 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F4, 0, VK_F4);
         }
 
-        // FIX: Specified System.Windows.Forms.Message to fix CS0104
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             base.WndProc(ref m);
@@ -254,99 +252,125 @@ namespace CamoReader
         private async void UpdateTextColorAsync()
         {
             if (config == null) return;
+            Color avgColor;
             try
             {
-                double avgBrightness = await CaptureAndAnalyzeBackground();
-                double threshold = 255 * (config.BrightnessShiftRatio / 100.0);
-                
-                textColor = avgBrightness > threshold ? Color.Black : Color.White;
+                // FIX: CaptureAndAnalyzeBackground now returns a Color
+                avgColor = await CaptureAndAnalyzeBackground();
             }
-            catch
+            catch(Exception ex)
             {
-                textColor = Color.White;
+                // FIX: Don't fail silently. Show the error.
+                textPages = new List<string> { $"Screen capture failed:\n{ex.Message}\n\nThis may be a driver or permissions issue." };
+                currentPage = 0;
+                textColor = Color.Red;
+                this.Invalidate();
+                return;
             }
 
+            // 1. Invert the background color
+            int invR = 255 - avgColor.R;
+            int invG = 255 - avgColor.G;
+            int invB = 255 - avgColor.B;
+
+            // 2. Calculate the brightness of the inverted color (this is our monochrome target)
+            int monoBrightness = (int)(invR * 0.299 + invG * 0.587 + invB * 0.114);
+
+            // 3. Blend between full color inverse and monochrome inverse based on ColorShiftRatio
+            // 0 = full inverse color, 100 = full monochrome (greyscale)
+            double colorRatio = (double)config.ColorShiftRatio / 100.0;
+            double inverseColorRatio = 1.0 - colorRatio;
+
+            int r = (int)(invR * inverseColorRatio + monoBrightness * colorRatio);
+            int g = (int)(invG * inverseColorRatio + monoBrightness * colorRatio);
+            int b = (int)(invB * inverseColorRatio + monoBrightness * colorRatio);
+
+            // 4. Adjust the final brightness using BrightnessShiftRatio
+            // 50 = no change (1.0x), 0 = black (0.0x), 100 = max brightness (2.0x)
+            double brightnessFactor = (double)config.BrightnessShiftRatio / 50.0;
+
+            // Clamp to avoid overflow
+            r = Math.Min(255, (int)(r * brightnessFactor));
+            g = Math.Min(255, (int)(g * brightnessFactor));
+            b = Math.Min(255, (int)(b * brightnessFactor));
+
+            textColor = Color.FromArgb(r, g, b);
             this.Invalidate();
         }
 
-        private async Task<double> CaptureAndAnalyzeBackground()
+        // FIX: Changed return type to Task<Color> and removed the outer try/catch
+        private async Task<Color> CaptureAndAnalyzeBackground()
         {
             return await Task.Run(() =>
             {
-                try
+                using (var factory = new Factory1())
+                using (var adapter = factory.GetAdapter1(0))
+                using (var output = adapter.GetOutput(0))
+                using (var output1 = output.QueryInterface<Output1>())
                 {
-                    using (var factory = new Factory1())
-                    using (var adapter = factory.GetAdapter1(0))
-                    using (var output = adapter.GetOutput(0))
-                    using (var output1 = output.QueryInterface<Output1>())
+                    int width = output1.Description.DesktopBounds.Right - output1.Description.DesktopBounds.Left;
+                    int height = output1.Description.DesktopBounds.Bottom - output1.Description.DesktopBounds.Top;
+
+                    var textureDesc = new Texture2DDescription
                     {
-                        // FIX: Use Left/Right/Bottom/Top to calculate Width/Height
-                        int width = output1.Description.DesktopBounds.Right - output1.Description.DesktopBounds.Left;
-                        int height = output1.Description.DesktopBounds.Bottom - output1.Description.DesktopBounds.Top;
+                        CpuAccessFlags = CpuAccessFlags.Read,
+                        BindFlags = BindFlags.None,
+                        Format = Format.B8G8R8A8_UNorm,
+                        Width = width,
+                        Height = height,
+                        OptionFlags = ResourceOptionFlags.None,
+                        MipLevels = 1,
+                        ArraySize = 1,
+                        SampleDescription = { Count = 1, Quality = 0 },
+                        Usage = ResourceUsage.Staging
+                    };
 
-                        var textureDesc = new Texture2DDescription
+                    using (var stagingTexture = new Texture2D(d3dDevice, textureDesc))
+                    using (var duplicatedOutput = output1.DuplicateOutput(d3dDevice))
+                    {
+                        SharpDX.DXGI.Resource screenResource = null;
+                        try
                         {
-                            CpuAccessFlags = CpuAccessFlags.Read,
-                            BindFlags = BindFlags.None,
-                            Format = Format.B8G8R8A8_UNorm,
-                            Width = width,
-                            Height = height,
-                            OptionFlags = ResourceOptionFlags.None,
-                            MipLevels = 1,
-                            ArraySize = 1,
-                            SampleDescription = { Count = 1, Quality = 0 },
-                            Usage = ResourceUsage.Staging
-                        };
-
-                        using (var stagingTexture = new Texture2D(d3dDevice, textureDesc))
-                        using (var duplicatedOutput = output1.DuplicateOutput(d3dDevice))
-                        {
-                            SharpDX.DXGI.Resource screenResource = null;
-                            try
+                            var result = duplicatedOutput.TryAcquireNextFrame(100, out _, out screenResource);
+                            
+                            if (!result.Success || screenResource == null)
                             {
-                                var result = duplicatedOutput.TryAcquireNextFrame(100, out _, out screenResource);
-                                
-                                if (!result.Success || screenResource == null)
-                                {
-                                    duplicatedOutput.ReleaseFrame();
-                                    return 127; 
-                                }
-
-                                using (var screenTexture = screenResource.QueryInterface<Texture2D>())
-                                {
-                                    d3dDevice.ImmediateContext.CopyResource(screenTexture, stagingTexture);
-                                }
-
-                                var brightness = CalculateBrightness(stagingTexture);
-                                
                                 duplicatedOutput.ReleaseFrame();
-                                return brightness;
+                                throw new Exception("Failed to acquire next frame. Screen might be locked.");
                             }
-                            finally
+
+                            using (var screenTexture = screenResource.QueryInterface<Texture2D>())
                             {
-                                screenResource?.Dispose();
+                                d3dDevice.ImmediateContext.CopyResource(screenTexture, stagingTexture);
                             }
+
+                            // FIX: Renamed CalculateBrightness to AnalyzeTexture
+                            var color = AnalyzeTexture(stagingTexture); 
+                            
+                            duplicatedOutput.ReleaseFrame();
+                            return color;
+                        }
+                        finally
+                        {
+                            screenResource?.Dispose();
                         }
                     }
-                }
-                catch
-                {
-                    return 127;
                 }
             });
         }
         
-        private double CalculateBrightness(Texture2D texture)
+        // FIX: Renamed from CalculateBrightness and changed return type to Color
+        private Color AnalyzeTexture(Texture2D texture)
         {
             var desc = texture.Description;
             var context = d3dDevice.ImmediateContext;
             
             var dataBox = context.MapSubresource(texture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
             
-            long totalBrightness = 0;
+            // FIX: Calculate average R, G, and B
+            long totalR = 0, totalG = 0, totalB = 0;
             int pixelCount = 0;
             
-            // FIX: This block requires <AllowUnsafeBlocks>true</AllowUnsafeBlocks> in the .csproj
             unsafe
             {
                 byte* ptr = (byte*)dataBox.DataPointer;
@@ -363,8 +387,9 @@ namespace CamoReader
                         byte g = row[x * 4 + 1];
                         byte r = row[x * 4 + 2];
                         
-                        int brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                        totalBrightness += brightness;
+                        totalR += r;
+                        totalG += g;
+                        totalB += b;
                         pixelCount++;
                     }
                 }
@@ -372,10 +397,15 @@ namespace CamoReader
             
             context.UnmapSubresource(texture, 0);
             
-            return pixelCount > 0 ? (double)totalBrightness / pixelCount : 127;
+            if (pixelCount == 0) return Color.FromArgb(127, 127, 127); // Default gray
+
+            return Color.FromArgb(
+                (int)(totalR / pixelCount),
+                (int)(totalG / pixelCount),
+                (int)(totalB / pixelCount)
+            );
         }
 
-        // FIX: Made sender nullable to fix CS8622
         private void MainForm_Paint(object? sender, PaintEventArgs e)
         {
             if (textPages == null || textPages.Count == 0) return;
@@ -404,9 +434,5 @@ namespace CamoReader
             
             base.OnFormClosing(e);
         }
-
-        // FIX: Removed duplicate Main() method to fix CS0017
     }
-    
-    // FIX: DELETED THE ENTIRE '#region Helper Classes' to fix CS0101
 }
