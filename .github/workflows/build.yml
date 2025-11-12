@@ -20,8 +20,28 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # STEP REMOVED - The "Restore dependencies" step is no longer needed.
-      # The build command will handle it.
+      # --- NEW DEBUG STEP 1: List all files ---
+      - name: List repository files
+        run: |
+          echo "--- Listing all files in repository ---"
+          Get-ChildItem -Recurse
+          echo "---------------------------------------"
+        shell: pwsh
+
+      # --- NEW DEBUG STEP 2: Preprocess project ---
+      - name: Preprocess MSBuild Project
+        run: |
+          echo "--- Generating preprocessed project file ---"
+          dotnet msbuild src/CamoReader.csproj -pp:preprocessed.xml
+          echo "------------------------------------------"
+        shell: pwsh
+      
+      # --- NEW DEBUG STEP 3: Upload preprocessed file ---
+      - name: Upload Preprocessed File
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-Debug-File
+          path: preprocessed.xml
 
       - name: Display CSProj Content for Debugging
         run: |
@@ -30,10 +50,10 @@ jobs:
           echo "------------------------------------------------"
         shell: pwsh
 
-      # STEP MODIFIED - Removed "--no-restore" to force build
-      # to re-evaluate the project and restore at the same time.
       - name: Build
         run: dotnet build src/CamoReader.csproj --configuration Release
+
+      # ... the rest of your build file continues below ...
 
       - name: Publish
         run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./publish
