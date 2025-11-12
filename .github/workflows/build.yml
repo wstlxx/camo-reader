@@ -20,12 +20,10 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # --- NEW STEP: Clear all NuGet caches ---
       - name: Clear NuGet Caches
         run: dotnet nuget locals all --clear
         shell: pwsh
 
-      # --- RE-ADDED DEBUG STEP: Print the csproj content ---
       - name: Display CSProj Content for Debugging
         run: |
           echo "--- Displaying src/CamoReader.csproj content ---"
@@ -33,12 +31,11 @@ jobs:
           echo "------------------------------------------------"
         shell: pwsh
       
-      # --- MODIFIED STEP: Removed the separate restore ---
+      # --- MODIFIED STEP ---
+      # I am now forcing the property directly on the command line.
       - name: Build
-        run: dotnet build src/CamoReader.csproj --configuration Release
+        run: dotnet build src/CamoReader.csproj --configuration Release /p:CsWinRTIncludesPlatformXML=false
 
-      # ... (Rest of your file) ...
-      
       - name: Publish
         run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./publish
 
