@@ -20,20 +20,20 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore dependencies
-        run: dotnet restore src/CamoReader.csproj
+      # STEP REMOVED - The "Restore dependencies" step is no longer needed.
+      # The build command will handle it.
 
-      # --- THIS IS THE NEW DEBUGGING STEP ---
       - name: Display CSProj Content for Debugging
         run: |
           echo "--- Displaying src/CamoReader.csproj content ---"
           type src\CamoReader.csproj
           echo "------------------------------------------------"
         shell: pwsh
-      # --- END OF NEW STEP ---
 
+      # STEP MODIFIED - Removed "--no-restore" to force build
+      # to re-evaluate the project and restore at the same time.
       - name: Build
-        run: dotnet build src/CamoReader.csproj --configuration Release --no-restore
+        run: dotnet build src/CamoReader.csproj --configuration Release
 
       - name: Publish
         run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./publish
