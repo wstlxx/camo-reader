@@ -8,9 +8,6 @@ using System.Linq;
 using System.Threading.Tasks;
 
 // --- REMOVED WinRT 'using' statements ---
-// using Windows.Graphics.Capture;
-// using Windows.Graphics.DirectX;
-// using Windows.Graphics.DirectX.Direct3D11;
 
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
@@ -47,8 +44,6 @@ namespace CamoReader
         private Color textColor = Color.White;
         private Font textFont;
         private Device d3dDevice;
-        // --- REMOVED captureDevice field ---
-        // private IDirect3DDevice captureDevice;
         #endregion
 
         public MainForm()
@@ -144,6 +139,7 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F4, 0, VK_F4);
         }
 
+        // --- FIX: Specified System.Windows.Forms.Message ---
         protected override void WndProc(ref System.Windows.Forms.Message m)
         {
             base.WndProc(ref m);
@@ -171,8 +167,6 @@ namespace CamoReader
             try
             {
                 d3dDevice = new Device(SharpDX.Direct3D.DriverType.Hardware, DeviceCreationFlags.BgraSupport);
-                // --- REMOVED problematic line ---
-                // captureDevice = Direct3D11Helper.CreateDevice(d3dDevice); 
             }
             catch (Exception ex)
             {
@@ -275,24 +269,17 @@ namespace CamoReader
             this.Invalidate();
         }
 
-        // --- REMOVED CheckWindowsCaptureSupport() as it's no longer needed ---
-
-        // --- COMPLETELY REWRITTEN to use SharpDX.DXGI ---
         private async Task<double> CaptureAndAnalyzeBackground()
         {
             return await Task.Run(() =>
             {
                 try
                 {
-                    // Factory1 to create device and adapter
                     using (var factory = new Factory1())
-                    // Get first adapter
                     using (var adapter = factory.GetAdapter1(0))
-                    // Get first output (monitor)
                     using (var output = adapter.GetOutput(0))
                     using (var output1 = output.QueryInterface<Output1>())
                     {
-                        // Create a staging texture description
                         var textureDesc = new Texture2DDescription
                         {
                             CpuAccessFlags = CpuAccessFlags.Read,
@@ -308,28 +295,24 @@ namespace CamoReader
                         };
 
                         using (var stagingTexture = new Texture2D(d3dDevice, textureDesc))
-                        // Duplicate the output
                         using (var duplicatedOutput = output1.DuplicateOutput(d3dDevice))
                         {
                             SharpDX.DXGI.Resource screenResource = null;
                             try
                             {
-                                // Try to get a frame
                                 var result = duplicatedOutput.TryAcquireNextFrame(100, out _, out screenResource);
                                 
                                 if (!result.Success || screenResource == null)
                                 {
                                     duplicatedOutput.ReleaseFrame();
-                                    return 127; // Default brightness if capture failed
+                                    return 127; 
                                 }
 
-                                // Copy the captured texture to the staging texture
                                 using (var screenTexture = screenResource.QueryInterface<Texture2D>())
                                 {
                                     d3dDevice.ImmediateContext.CopyResource(screenTexture, stagingTexture);
                                 }
 
-                                // Analyze the staging texture
                                 var brightness = CalculateBrightness(stagingTexture);
                                 
                                 duplicatedOutput.ReleaseFrame();
@@ -344,13 +327,11 @@ namespace CamoReader
                 }
                 catch
                 {
-                    return 127; // Default brightness on any error
+                    return 127;
                 }
             });
         }
         
-        // --- REMOVED GetPrimaryMonitorHandle() ---
-
         private double CalculateBrightness(Texture2D texture)
         {
             var desc = texture.Description;
@@ -366,8 +347,7 @@ namespace CamoReader
                 byte* ptr = (byte*)dataBox.DataPointer;
                 int stride = dataBox.RowPitch;
                 
-                // --- MODIFIED: Sample a grid instead of every pixel for speed ---
-                int step = Math.Max(1, Math.Min(desc.Width, desc.Height) / 100); // Sample ~10,000 pixels
+                int step = Math.Max(1, Math.Min(desc.Width, desc.Height) / 100); 
                 
                 for (int y = 0; y < desc.Height; y += step)
                 {
@@ -417,7 +397,6 @@ namespace CamoReader
             trayIcon.Dispose();
             
             d3dDevice?.Dispose();
-            // --- REMOVED captureDevice dispose ---
             
             base.OnFormClosing(e);
         }
@@ -430,32 +409,7 @@ namespace CamoReader
             Application.Run(new MainForm());
         }
     }
-
-
-WindowPosX = 100
-WindowPosY = 100
-WindowWidth = 800
-WindowHeight = 200
-TextSize = 14
-TextFilePath = book.txt
-BrightnessShiftRatio = 50
-ColorShiftRatio = 50";
-            File.WriteAllText(filePath, defaultConfig);
-        }
-
-        private int GetInt(string key, int defaultValue)
-        {
-            return settings.ContainsKey(key) && int.TryParse(settings[key], out int val) ? val : defaultValue;
-        }
-
-        private string GetString(string key, string defaultValue)
-        {
-            return settings.ContainsKey(key) ? settings[key] : defaultValue;
-        }
-    }
     
-    // --- REMOVED ALL WinRT HELPER CLASSES ---
-    // (Direct3D11Helper, IDirect3DDxgiInterfaceAccess, IGraphicsCaptureSession3)
-    
-    #endregion
+    // --- FIX: DELETED THE ENTIRE '#region Helper Classes' ---
+    // (This removed the duplicate ConfigManager and the old WinRT helpers)
 }
