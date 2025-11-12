@@ -23,6 +23,11 @@ jobs:
       - name: Clear NuGet Caches
         run: dotnet nuget locals all --clear
         shell: pwsh
+      
+      # --- NEW STEP: Delete the 'obj' and 'bin' folders ---
+      - name: Clean project
+        run: dotnet clean src/CamoReader.csproj --configuration Release
+        shell: pwsh
 
       - name: Display CSProj Content for Debugging
         run: |
@@ -31,14 +36,15 @@ jobs:
           echo "------------------------------------------------"
         shell: pwsh
       
-      # --- MODIFIED STEP ---
-      # I am now forcing the property directly on the command line.
+      # --- MODIFIED STEP: Forcing BOTH properties on the command line ---
       - name: Build
-        run: dotnet build src/CamoReader.csproj --configuration Release /p:CsWinRTIncludesPlatformXML=false
+        run: dotnet build src/CamoReader.csproj --configuration Release --no-restore /p:CsWinRTIncludesPlatformXML=false /p:CsWinRTTarget=desktop
 
       - name: Publish
         run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./publish
 
+      # ... (Rest of your file) ...
+      
       - name: Create config.ini
         run: |
           echo "; Camo-Reader Configuration" > ./publish/config.ini
