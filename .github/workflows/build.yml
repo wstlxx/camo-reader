@@ -28,6 +28,11 @@ jobs:
         run: dotnet clean src/CamoReader.csproj --configuration Release
         shell: pwsh
 
+      # --- NEW STEP: Explicit restore with forced properties ---
+      - name: Restore dependencies
+        run: dotnet restore src/CamoReader.csproj /p:CsWinRTIncludesPlatformXML=false /p:CsWinRTTarget=desktop
+        shell: pwsh
+
       - name: Display CSProj Content for Debugging
         run: |
           echo "--- Displaying src/CamoReader.csproj content ---"
@@ -35,9 +40,9 @@ jobs:
           echo "------------------------------------------------"
         shell: pwsh
       
-      # --- MODIFIED STEP: Removed '--no-restore' ---
+      # --- MODIFIED STEP: Build with forced properties and --no-restore ---
       - name: Build
-        run: dotnet build src/CamoReader.csproj --configuration Release /p:CsWinRTIncludesPlatformXML=false /p:CsWinRTTarget=desktop
+        run: dotnet build src/CamoReader.csproj --configuration Release --no-restore /p:CsWinRTIncludesPlatformXML=false /p:CsWinRTTarget=desktop
 
       - name: Publish
         run: dotnet publish src/CamoReader.csproj -c Release -r win-x64 --self-contained false -o ./publish
