@@ -5,7 +5,6 @@
     <TargetPlatformIdentifier>Windows</TargetPlatformIdentifier>
     
     <CsWinRTIncludesPlatformXML>false</CsWinRTIncludesPlatformXML>
-
     <CsWinRTTarget>desktop</CsWinRTTarget>
 
     <OutputType>WinExe</OutputType>
@@ -24,7 +23,8 @@
     <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
     <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
 
-    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.0.8" />
+    
     <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.22621.3233" />
   </ItemGroup>
 </Project>
