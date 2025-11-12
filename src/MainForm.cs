@@ -6,9 +6,12 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Windows.Graphics.Capture;
-using Windows.Graphics.DirectX;
-using Windows.Graphics.DirectX.Direct3D11;
+
+// --- REMOVED WinRT 'using' statements ---
+// using Windows.Graphics.Capture;
+// using Windows.Graphics.DirectX;
+// using Windows.Graphics.DirectX.Direct3D11;
+
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using Device = SharpDX.Direct3D11.Device;
@@ -44,7 +47,8 @@ namespace CamoReader
         private Color textColor = Color.White;
         private Font textFont;
         private Device d3dDevice;
-        private IDirect3DDevice captureDevice;
+        // --- REMOVED captureDevice field ---
+        // private IDirect3DDevice captureDevice;
         #endregion
 
         public MainForm()
@@ -54,7 +58,7 @@ namespace CamoReader
             SetupWindow();
             SetupTrayIcon();
             RegisterHotkeys();
-            InitializeD3D();
+            InitializeD3D(); // This is still needed for SharpDX
             LoadAndPaginateText();
         }
 
@@ -101,12 +105,10 @@ namespace CamoReader
 
         private void SetupTrayIcon()
         {
-            // Create transparent icon programmatically
             Bitmap bmp = new Bitmap(32, 32);
             using (Graphics g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.Transparent);
-                // Draw a simple "C" for Camo-Reader
                 using (Pen pen = new Pen(Color.White, 3))
                 {
                     g.DrawArc(pen, 8, 8, 16, 16, 45, 270);
@@ -169,7 +171,8 @@ namespace CamoReader
             try
             {
                 d3dDevice = new Device(SharpDX.Direct3D.DriverType.Hardware, DeviceCreationFlags.BgraSupport);
-                captureDevice = Direct3D11Helper.CreateDevice(d3dDevice);
+                // --- REMOVED problematic line ---
+                // captureDevice = Direct3D11Helper.CreateDevice(d3dDevice); 
             }
             catch (Exception ex)
             {
@@ -257,13 +260,6 @@ namespace CamoReader
 
         private async void UpdateTextColorAsync()
         {
-            if (!CheckWindowsCaptureSupport())
-            {
-                textColor = Color.White;
-                this.Invalidate();
-                return;
-            }
-
             try
             {
                 double avgBrightness = await CaptureAndAnalyzeBackground();
@@ -279,122 +275,119 @@ namespace CamoReader
             this.Invalidate();
         }
 
-        private bool CheckWindowsCaptureSupport()
-        {
-            var version = Environment.OSVersion.Version;
-            // Windows 11 or Windows 10 >= 2104 (build 19041.928+)
-            return version.Major >= 10 && version.Build >= 19041;
-        }
+        // --- REMOVED CheckWindowsCaptureSupport() as it's no longer needed ---
 
+        // --- COMPLETELY REWRITTEN to use SharpDX.DXGI ---
         private async Task<double> CaptureAndAnalyzeBackground()
         {
             return await Task.Run(() =>
             {
                 try
                 {
-                    var picker = new GraphicsCapturePicker();
-                    var item = GraphicsCaptureItem.CreateFromMonitorHandle(GetPrimaryMonitorHandle());
-                    
-                    if (item == null) return 127;
-
-                    using (var framePool = Direct3D11CaptureFramePool.Create(
-                        captureDevice,
-                        DirectXPixelFormat.B8G8R8A8UIntNormalized,
-                        1,
-                        item.Size))
+                    // Factory1 to create device and adapter
+                    using (var factory = new Factory1())
+                    // Get first adapter
+                    using (var adapter = factory.GetAdapter1(0))
+                    // Get first output (monitor)
+                    using (var output = adapter.GetOutput(0))
+                    using (var output1 = output.QueryInterface<Output1>())
                     {
-                        var session = framePool.CreateCaptureSession(item);
-                        
-                        // Disable yellow border on supported versions
-                        try
+                        // Create a staging texture description
+                        var textureDesc = new Texture2DDescription
                         {
-                            var session3 = session as IGraphicsCaptureSession3;
-                            if (session3 != null)
+                            CpuAccessFlags = CpuAccessFlags.Read,
+                            BindFlags = BindFlags.None,
+                            Format = Format.B8G8R8A8_UNorm,
+                            Width = output1.Description.DesktopBounds.Width,
+                            Height = output1.Description.DesktopBounds.Height,
+                            OptionFlags = ResourceOptionFlags.None,
+                            MipLevels = 1,
+                            ArraySize = 1,
+                            SampleDescription = { Count = 1, Quality = 0 },
+                            Usage = ResourceUsage.Staging
+                        };
+
+                        using (var stagingTexture = new Texture2D(d3dDevice, textureDesc))
+                        // Duplicate the output
+                        using (var duplicatedOutput = output1.DuplicateOutput(d3dDevice))
+                        {
+                            SharpDX.DXGI.Resource screenResource = null;
+                            try
                             {
-                                session3.IsBorderRequired = false;
+                                // Try to get a frame
+                                var result = duplicatedOutput.TryAcquireNextFrame(100, out _, out screenResource);
+                                
+                                if (!result.Success || screenResource == null)
+                                {
+                                    duplicatedOutput.ReleaseFrame();
+                                    return 127; // Default brightness if capture failed
+                                }
+
+                                // Copy the captured texture to the staging texture
+                                using (var screenTexture = screenResource.QueryInterface<Texture2D>())
+                                {
+                                    d3dDevice.ImmediateContext.CopyResource(screenTexture, stagingTexture);
+                                }
+
+                                // Analyze the staging texture
+                                var brightness = CalculateBrightness(stagingTexture);
+                                
+                                duplicatedOutput.ReleaseFrame();
+                                return brightness;
                             }
-                        }
-                        catch { }
-
-                        session.StartCapture();
-                        
-                        using (var frame = framePool.TryGetNextFrame())
-                        {
-                            if (frame == null) return 127;
-
-                            var texture = Direct3D11Helper.CreateSharpDXTexture2D(frame.Surface);
-                            var brightness = CalculateBrightness(texture);
-                            
-                            session.Dispose();
-                            return brightness;
+                            finally
+                            {
+                                screenResource?.Dispose();
+                            }
                         }
                     }
                 }
                 catch
                 {
-                    return 127;
+                    return 127; // Default brightness on any error
                 }
             });
         }
-
-        private IntPtr GetPrimaryMonitorHandle()
-        {
-            return Screen.PrimaryScreen.GetHashCode();
-        }
+        
+        // --- REMOVED GetPrimaryMonitorHandle() ---
 
         private double CalculateBrightness(Texture2D texture)
         {
             var desc = texture.Description;
             var context = d3dDevice.ImmediateContext;
             
-            // Create staging texture for CPU read
-            var stagingDesc = new Texture2DDescription
+            var dataBox = context.MapSubresource(texture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+            
+            long totalBrightness = 0;
+            int pixelCount = 0;
+            
+            unsafe
             {
-                Width = desc.Width,
-                Height = desc.Height,
-                MipLevels = 1,
-                ArraySize = 1,
-                Format = desc.Format,
-                Usage = ResourceUsage.Staging,
-                BindFlags = BindFlags.None,
-                CpuAccessFlags = CpuAccessFlags.Read,
-                SampleDescription = new SampleDescription(1, 0)
-            };
-
-            using (var staging = new Texture2D(d3dDevice, stagingDesc))
-            {
-                context.CopyResource(texture, staging);
+                byte* ptr = (byte*)dataBox.DataPointer;
+                int stride = dataBox.RowPitch;
                 
-                var dataBox = context.MapSubresource(staging, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
+                // --- MODIFIED: Sample a grid instead of every pixel for speed ---
+                int step = Math.Max(1, Math.Min(desc.Width, desc.Height) / 100); // Sample ~10,000 pixels
                 
-                long totalBrightness = 0;
-                int pixelCount = 0;
-                
-                unsafe
+                for (int y = 0; y < desc.Height; y += step)
                 {
-                    byte* ptr = (byte*)dataBox.DataPointer;
-                    int stride = dataBox.RowPitch;
-                    
-                    for (int y = 0; y < desc.Height; y++)
+                    byte* row = ptr + (y * stride);
+                    for (int x = 0; x < desc.Width; x += step)
                     {
-                        byte* row = ptr + (y * stride);
-                        for (int x = 0; x < desc.Width; x++)
-                        {
-                            byte b = row[x * 4];
-                            byte g = row[x * 4 + 1];
-                            byte r = row[x * 4 + 2];
-                            
-                            int brightness = (r * 299 + g * 587 + b * 114) / 1000;
-                            totalBrightness += brightness;
-                            pixelCount++;
-                        }
+                        byte b = row[x * 4];
+                        byte g = row[x * 4 + 1];
+                        byte r = row[x * 4 + 2];
+                        
+                        int brightness = (r * 299 + g * 587 + b * 114) / 1000;
+                        totalBrightness += brightness;
+                        pixelCount++;
                     }
                 }
-                
-                context.UnmapSubresource(staging, 0);
-                
-                return pixelCount > 0 ? (double)totalBrightness / pixelCount : 127;
             }
+            
+            context.UnmapSubresource(texture, 0);
+            
+            return pixelCount > 0 ? (double)totalBrightness / pixelCount : 127;
         }
 
         private void MainForm_Paint(object sender, PaintEventArgs e)
@@ -407,7 +400,6 @@ namespace CamoReader
                 e.Graphics.DrawString(pageText, textFont, brush, new RectangleF(20, 20, this.Width - 40, this.Height - 40));
             }
 
-            // Page indicator
             string pageInfo = $"Page {currentPage + 1}/{textPages.Count}";
             using (SolidBrush brush = new SolidBrush(Color.FromArgb(128, textColor)))
             {
@@ -425,7 +417,7 @@ namespace CamoReader
             trayIcon.Dispose();
             
             d3dDevice?.Dispose();
-            captureDevice?.Dispose();
+            // --- REMOVED captureDevice dispose ---
             
             base.OnFormClosing(e);
         }
@@ -514,42 +506,9 @@ ColorShiftRatio = 50";
             return settings.ContainsKey(key) ? settings[key] : defaultValue;
         }
     }
-
-    public static class Direct3D11Helper
-    {
-        [DllImport("d3d11.dll", EntryPoint = "CreateDirect3D11DeviceFromDXGIDevice")]
-        private static extern uint CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
-
-        public static IDirect3DDevice CreateDevice(Device device)
-        {
-            using (var dxgiDevice = device.QueryInterface<SharpDX.DXGI.Device>())
-            {
-                CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice.NativePointer, out IntPtr pUnknown);
-                var d3dDevice = Marshal.GetObjectForIUnknown(pUnknown) as IDirect3DDevice;
-                Marshal.Release(pUnknown);
-                return d3dDevice;
-            }
-        }
-
-        public static Texture2D CreateSharpDXTexture2D(IDirect3DSurface surface)
-        {
-            var access = surface as Windows.Graphics.DirectX.Direct3D11.IDirect3DDxgiInterfaceAccess;
-            var pResource = access.GetInterface(new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c"));
-            return new Texture2D(pResource);
-        }
-    }
-
-    [ComImport]
-    [Guid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IDirect3DDxgiInterfaceAccess
-    {
-        IntPtr GetInterface([In] ref Guid iid);
-    }
-
-    public interface IGraphicsCaptureSession3
-    {
-        bool IsBorderRequired { get; set; }
-    }
+    
+    // --- REMOVED ALL WinRT HELPER CLASSES ---
+    // (Direct3D11Helper, IDirect3DDxgiInterfaceAccess, IGraphicsCaptureSession3)
+    
     #endregion
 }
