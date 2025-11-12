@@ -6,6 +6,8 @@
     
     <CsWinRTIncludesPlatformXML>false</CsWinRTIncludesPlatformXML>
 
+    <CsWinRTTarget>desktop</CsWinRTTarget>
+
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
