@@ -8,13 +8,15 @@ namespace CamoReader
         private string filePath;
         private Dictionary<string, string> settings;
 
-        // FIX: Added all the public properties that MainForm.cs needs
         public int WindowPosX { get; private set; }
         public int WindowPosY { get; private set; }
         public int WindowWidth { get; private set; }
         public int WindowHeight { get; private set; }
         public int TextSize { get; private set; }
-        public string TextFilePath { get; private set; }
+        
+        // FIX: Initialized to default value to satisfy CS8618 warning
+        public string TextFilePath { get; private set; } = string.Empty; 
+        
         public int BrightnessShiftRatio { get; private set; }
         public int ColorShiftRatio { get; private set; }
 

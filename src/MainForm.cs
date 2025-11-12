@@ -255,13 +255,13 @@ namespace CamoReader
             Color avgColor;
             try
             {
-                // FIX: CaptureAndAnalyzeBackground now returns a Color
+                // This will now throw an exception if it fails
                 avgColor = await CaptureAndAnalyzeBackground();
             }
             catch(Exception ex)
             {
-                // FIX: Don't fail silently. Show the error.
-                textPages = new List<string> { $"Screen capture failed:\n{ex.Message}\n\nThis may be a driver or permissions issue." };
+                // FIX: This catch block will now execute and show you the error
+                textPages = new List<string> { $"Screen capture failed:\n{ex.Message}\n\nThis may be a driver or permissions issue. Or, your screen resolution may have changed." };
                 currentPage = 0;
                 textColor = Color.Red;
                 this.Invalidate();
@@ -289,7 +289,6 @@ namespace CamoReader
             // 50 = no change (1.0x), 0 = black (0.0x), 100 = max brightness (2.0x)
             double brightnessFactor = (double)config.BrightnessShiftRatio / 50.0;
 
-            // Clamp to avoid overflow
             r = Math.Min(255, (int)(r * brightnessFactor));
             g = Math.Min(255, (int)(g * brightnessFactor));
             b = Math.Min(255, (int)(b * brightnessFactor));
@@ -298,11 +297,11 @@ namespace CamoReader
             this.Invalidate();
         }
 
-        // FIX: Changed return type to Task<Color> and removed the outer try/catch
         private async Task<Color> CaptureAndAnalyzeBackground()
         {
             return await Task.Run(() =>
             {
+                // FIX: Removed the try/catch block from here to let errors bubble up
                 using (var factory = new Factory1())
                 using (var adapter = factory.GetAdapter1(0))
                 using (var output = adapter.GetOutput(0))
@@ -331,12 +330,13 @@ namespace CamoReader
                         SharpDX.DXGI.Resource screenResource = null;
                         try
                         {
-                            var result = duplicatedOutput.TryAcquireNextFrame(100, out _, out screenResource);
+                            // FIX: Explicitly declare 'frameInfo' to fix CS8600 warning
+                            var result = duplicatedOutput.TryAcquireNextFrame(100, out OutputDuplicateFrameInformation frameInfo, out screenResource);
                             
                             if (!result.Success || screenResource == null)
                             {
                                 duplicatedOutput.ReleaseFrame();
-                                throw new Exception("Failed to acquire next frame. Screen might be locked.");
+                                throw new Exception($"Failed to acquire next frame. Result: {result.Code}. Screen might be locked.");
                             }
 
                             using (var screenTexture = screenResource.QueryInterface<Texture2D>())
@@ -344,7 +344,6 @@ namespace CamoReader
                                 d3dDevice.ImmediateContext.CopyResource(screenTexture, stagingTexture);
                             }
 
-                            // FIX: Renamed CalculateBrightness to AnalyzeTexture
                             var color = AnalyzeTexture(stagingTexture); 
                             
                             duplicatedOutput.ReleaseFrame();
@@ -359,7 +358,6 @@ namespace CamoReader
             });
         }
         
-        // FIX: Renamed from CalculateBrightness and changed return type to Color
         private Color AnalyzeTexture(Texture2D texture)
         {
             var desc = texture.Description;
@@ -367,7 +365,6 @@ namespace CamoReader
             
             var dataBox = context.MapSubresource(texture, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
             
-            // FIX: Calculate average R, G, and B
             long totalR = 0, totalG = 0, totalB = 0;
             int pixelCount = 0;
             
