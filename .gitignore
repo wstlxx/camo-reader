@@ -1,1 +1,28 @@
-/target
+# Build artifacts
+bin/
+obj/
+artifacts/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# OS files
+*.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# NuGet
+*.nupkg
+packages/
+
+# dotnet
+*.dotCover
