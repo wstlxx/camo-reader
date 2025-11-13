@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Collections.Generic;
 
@@ -13,15 +14,9 @@ namespace CamoReader
         public int WindowWidth { get; private set; }
         public int WindowHeight { get; private set; }
         public int TextSize { get; private set; }
-        
-        // FIX: Initialized to default value to satisfy CS8618 warning
-        public string TextFilePath { get; private set; } = string.Empty; 
-        
+        public string TextFilePath { get; private set; } = string.Empty;
         public int BrightnessShiftRatio { get; private set; }
         public int ColorShiftRatio { get; private set; }
-        
-        // FIX: Added TextOpacity
-        public int TextOpacity { get; private set; }
 
         public ConfigManager(string path)
         {
@@ -55,42 +50,92 @@ namespace CamoReader
             WindowHeight = GetInt("WindowHeight", 200);
             TextSize = GetInt("TextSize", 14);
             TextFilePath = GetString("TextFilePath", "book.txt");
-            BrightnessShiftRatio = GetInt("BrightnessShiftRatio", 50);
-            ColorShiftRatio = GetInt("ColorShiftRatio", 50);
-            // FIX: Load TextOpacity, default to 75
-            TextOpacity = GetInt("TextOpacity", 75);
+            BrightnessShiftRatio = GetInt("BrightnessShiftRatio", 80);
+            ColorShiftRatio = GetInt("ColorShiftRatio", 60);
         }
 
         private void CreateDefaultConfig()
         {
             string defaultConfig = @"; Camo-Reader Configuration
+; Window position and size
 WindowPosX = 100
 WindowPosY = 100
 WindowWidth = 800
 WindowHeight = 200
+
+; Text settings
 TextSize = 14
 TextFilePath = book.txt
-BrightnessShiftRatio = 50
-ColorShiftRatio = 50
-TextOpacity = 75
-"; // Added TextOpacity
+
+; Adaptive transparency settings (0-100)
+; BrightnessShiftRatio: How much to shift brightness away from background (higher = more contrast)
+BrightnessShiftRatio = 80
+; ColorShiftRatio: How much to shift color away from background (higher = more color difference)
+ColorShiftRatio = 60
+";
             File.WriteAllText(filePath, defaultConfig);
         }
 
         private int GetInt(string key, int defaultValue)
         {
-            // Clamp opacity to a valid range
-            if (key == "TextOpacity")
+            if (settings.ContainsKey(key) && int.TryParse(settings[key], out int v))
             {
-                int val = settings.ContainsKey(key) && int.TryParse(settings[key], out int oVal) ? oVal : defaultValue;
-                return Math.Max(0, Math.Min(100, val)); // Clamp 0-100
+                // Clamp shift ratios to 0-100
+                if (key == "BrightnessShiftRatio" || key == "ColorShiftRatio")
+                {
+                    return Math.Max(0, Math.Min(100, v));
+                }
+                return v;
             }
-            return settings.ContainsKey(key) && int.TryParse(settings[key], out int v) ? v : defaultValue;
+            return defaultValue;
         }
 
         private string GetString(string key, string defaultValue)
         {
             return settings.ContainsKey(key) ? settings[key] : defaultValue;
+        }
+
+        public void IncreaseBrightnessShift()
+        {
+            if (BrightnessShiftRatio < 100)
+            {
+                BrightnessShiftRatio = Math.Min(100, BrightnessShiftRatio + 5);
+                SaveConfig();
+            }
+        }
+
+        public void DecreaseBrightnessShift()
+        {
+            if (BrightnessShiftRatio > 0)
+            {
+                BrightnessShiftRatio = Math.Max(0, BrightnessShiftRatio - 5);
+                SaveConfig();
+            }
+        }
+
+        private void SaveConfig()
+        {
+            settings["BrightnessShiftRatio"] = BrightnessShiftRatio.ToString();
+            
+            List<string> lines = new List<string>();
+            lines.Add("; Camo-Reader Configuration");
+            lines.Add("; Window position and size");
+            lines.Add($"WindowPosX = {WindowPosX}");
+            lines.Add($"WindowPosY = {WindowPosY}");
+            lines.Add($"WindowWidth = {WindowWidth}");
+            lines.Add($"WindowHeight = {WindowHeight}");
+            lines.Add("");
+            lines.Add("; Text settings");
+            lines.Add($"TextSize = {TextSize}");
+            lines.Add($"TextFilePath = {TextFilePath}");
+            lines.Add("");
+            lines.Add("; Adaptive transparency settings (0-100)");
+            lines.Add("; BrightnessShiftRatio: How much to shift brightness away from background (higher = more contrast)");
+            lines.Add($"BrightnessShiftRatio = {BrightnessShiftRatio}");
+            lines.Add("; ColorShiftRatio: How much to shift color away from background (higher = more color difference)");
+            lines.Add($"ColorShiftRatio = {ColorShiftRatio}");
+            
+            File.WriteAllLines(filePath, lines);
         }
     }
 }

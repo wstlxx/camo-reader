@@ -1,11 +1,11 @@
 using System;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 
 namespace CamoReader
 {
@@ -17,6 +17,15 @@ namespace CamoReader
 
         [DllImport("user32.dll")]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDC(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        private static extern uint GetPixel(IntPtr hdc, int nXPos, int nYPos);
 
         // --- MODIFIERS ---
         private const uint MOD_NONE = 0x0000;
@@ -42,7 +51,7 @@ namespace CamoReader
         
         // --- WINDOWS STYLES ---
         private const int WS_EX_LAYERED = 0x80000;
-        private const int WS_EX_TRANSPARENT = 0x20; // Makes window click-through
+        private const int WS_EX_TRANSPARENT = 0x20;
         #endregion
 
         #region Fields
@@ -50,10 +59,8 @@ namespace CamoReader
         private ConfigManager config = null!;
         private List<string> textPages = null!;
         private int currentPage = 0;
-        private Color textColor = Color.White;
         private Font textFont = null!;
-        
-        // --- REMOVED Dragging fields ---
+        private Timer refreshTimer = null!;
         #endregion
 
         public MainForm()
@@ -64,6 +71,7 @@ namespace CamoReader
             SetupTrayIcon();
             RegisterHotkeys();
             LoadAndPaginateText();
+            SetupRefreshTimer();
         }
 
         private void InitializeComponent()
@@ -71,7 +79,7 @@ namespace CamoReader
             this.SuspendLayout();
             this.AutoScaleDimensions = new SizeF(6F, 13F);
             this.AutoScaleMode = AutoScaleMode.Font;
-            this.BackColor = Color.Black; 
+            this.BackColor = Color.Magenta;
             this.ClientSize = new Size(800, 200);
             this.FormBorderStyle = FormBorderStyle.None;
             this.Name = "MainForm";
@@ -85,8 +93,7 @@ namespace CamoReader
             get
             {
                 CreateParams cp = base.CreateParams;
-                // FIX: Re-added WS_EX_TRANSPARENT to make window click-through
-                cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT; 
+                cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT;
                 return cp;
             }
         }
@@ -98,19 +105,25 @@ namespace CamoReader
             this.Location = new Point(config.WindowPosX, config.WindowPosY);
             this.Size = new Size(config.WindowWidth, config.WindowHeight);
             
-            this.TransparencyKey = Color.Black;
-            this.Opacity = (double)config.TextOpacity / 100.0;
+            // Use Magenta as transparency key
+            this.TransparencyKey = Color.Magenta;
+            this.Opacity = 1.0; // Keep window fully opaque, we'll handle transparency in drawing
             
-            textFont = new Font("Arial", config.TextSize);
-            textColor = Color.White;
+            textFont = new Font("Arial", config.TextSize, FontStyle.Bold);
         }
 
         private void SetupWindow()
         {
             this.DoubleBuffered = true;
             this.Paint += MainForm_Paint;
-            
-            // --- REMOVED Mouse handlers for dragging ---
+        }
+
+        private void SetupRefreshTimer()
+        {
+            refreshTimer = new Timer();
+            refreshTimer.Interval = 100; // Refresh every 100ms to adapt to background
+            refreshTimer.Tick += (s, e) => this.Invalidate();
+            refreshTimer.Start();
         }
 
         private void SetupTrayIcon()
@@ -137,7 +150,6 @@ namespace CamoReader
             {
                 if (((MouseEventArgs)e).Button == MouseButtons.Left)
                 {
-                    // Tray icon click still toggles
                     ToggleVisibility();
                 }
             };
@@ -155,8 +167,6 @@ namespace CamoReader
             RegisterHotKey(this.Handle, HOTKEY_F4_NEXT, MOD_NONE, VK_F4);
             RegisterHotKey(this.Handle, HOTKEY_F5_OPACITY_DOWN, MOD_NONE, VK_F5);
             RegisterHotKey(this.Handle, HOTKEY_F6_OPACITY_UP, MOD_NONE, VK_F6);
-            
-            // FIX: Register F2 and Ctrl+F1
             RegisterHotKey(this.Handle, HOTKEY_F2_TELEPORT, MOD_NONE, VK_F2);
             RegisterHotKey(this.Handle, HOTKEY_CTRL_F1_SHOW, MOD_CONTROL, VK_F1);
         }
@@ -170,7 +180,6 @@ namespace CamoReader
                 int id = m.WParam.ToInt32();
                 switch (id)
                 {
-                    // FIX: Changed to explicit Show/Hide
                     case HOTKEY_F1_HIDE:
                         this.Hide();
                         break;
@@ -187,10 +196,10 @@ namespace CamoReader
                         NextPage();
                         break;
                     case HOTKEY_F5_OPACITY_DOWN:
-                        DecreaseOpacity();
+                        DecreaseShiftRatio();
                         break;
                     case HOTKEY_F6_OPACITY_UP:
-                        IncreaseOpacity();
+                        IncreaseShiftRatio();
                         break;
                 }
             }
@@ -251,6 +260,54 @@ namespace CamoReader
             return pages.Count > 0 ? pages : new List<string> { "No text to display" };
         }
 
+        private Color SampleScreenColor(int x, int y)
+        {
+            IntPtr hdc = GetDC(IntPtr.Zero);
+            uint pixel = GetPixel(hdc, x, y);
+            ReleaseDC(IntPtr.Zero, hdc);
+            
+            Color color = Color.FromArgb(
+                (int)(pixel & 0x000000FF),
+                (int)((pixel & 0x0000FF00) >> 8),
+                (int)((pixel & 0x00FF0000) >> 16)
+            );
+            
+            return color;
+        }
+
+        private Color GetAdaptiveTextColor(int screenX, int screenY)
+        {
+            Color bgColor = SampleScreenColor(screenX, screenY);
+            
+            // Calculate perceived brightness (0-255)
+            float brightness = (bgColor.R * 0.299f + bgColor.G * 0.587f + bgColor.B * 0.114f);
+            
+            // Shift ratios from config
+            float brightnessShift = config.BrightnessShiftRatio / 100f;
+            float colorShift = config.ColorShiftRatio / 100f;
+            
+            // Invert brightness direction
+            float targetBrightness = brightness < 128 ? 255 : 0;
+            float newBrightness = brightness + (targetBrightness - brightness) * brightnessShift;
+            
+            // Shift color away from background
+            int r = (int)Math.Clamp(bgColor.R + (255 - bgColor.R * 2) * colorShift, 0, 255);
+            int g = (int)Math.Clamp(bgColor.G + (255 - bgColor.G * 2) * colorShift, 0, 255);
+            int b = (int)Math.Clamp(bgColor.B + (255 - bgColor.B * 2) * colorShift, 0, 255);
+            
+            // Normalize to target brightness
+            float currentBrightness = (r * 0.299f + g * 0.587f + b * 0.114f);
+            if (currentBrightness > 0)
+            {
+                float scale = newBrightness / currentBrightness;
+                r = (int)Math.Clamp(r * scale, 0, 255);
+                g = (int)Math.Clamp(g * scale, 0, 255);
+                b = (int)Math.Clamp(b * scale, 0, 255);
+            }
+            
+            return Color.FromArgb(255, r, g, b);
+        }
+
         private void ToggleVisibility()
         {
             this.Visible = !this.Visible;
@@ -270,69 +327,102 @@ namespace CamoReader
             this.Invalidate();
         }
 
-        private void IncreaseOpacity()
+        private void IncreaseShiftRatio()
         {
-            if (this.Opacity <= 0.95) 
-            {
-                this.Opacity += 0.05;
-            }
+            config.IncreaseBrightnessShift();
+            this.Invalidate();
         }
 
-        private void DecreaseOpacity()
+        private void DecreaseShiftRatio()
         {
-            if (this.Opacity >= 0.10) 
-            {
-                this.Opacity -= 0.05;
-            }
+            config.DecreaseBrightnessShift();
+            this.Invalidate();
         }
         
-        // --- FIX: New method to teleport window ---
         private void TeleportToCursor()
         {
-            // Center the window on the cursor
             int newX = Cursor.Position.X - (this.Width / 2);
             int newY = Cursor.Position.Y - (this.Height / 2);
             this.Location = new Point(newX, newY);
             
-            // Ensure the window is visible if we teleport it
             if (!this.Visible)
             {
                 this.Show();
             }
         }
-        // --- End of new method ---
-        
-        // --- REMOVED Mouse drag methods ---
 
         private void MainForm_Paint(object? sender, PaintEventArgs e)
         {
             if (textPages == null || textPages.Count == 0) return;
 
-            if (currentPage >= textPages.Count) currentPage = 0; 
-            if (textPages.Count == 0) return; 
+            if (currentPage >= textPages.Count) currentPage = 0;
+            if (textPages.Count == 0) return;
 
-            using (SolidBrush brush = new SolidBrush(textColor))
+            // Fill background with transparency key
+            e.Graphics.Clear(Color.Magenta);
+
+            string pageText = textPages[currentPage];
+            
+            // Sample multiple points and average for more stable color
+            int centerX = this.Left + this.Width / 2;
+            int centerY = this.Top + this.Height / 2;
+            
+            List<Color> samples = new List<Color>();
+            for (int i = -1; i <= 1; i++)
             {
-                string pageText = textPages[currentPage];
-                e.Graphics.DrawString(pageText, textFont, brush, new RectangleF(20, 20, this.Width - 40, this.Height - 40));
+                for (int j = -1; j <= 1; j++)
+                {
+                    int sampleX = centerX + i * (this.Width / 4);
+                    int sampleY = centerY + j * (this.Height / 4);
+                    samples.Add(GetAdaptiveTextColor(sampleX, sampleY));
+                }
+            }
+            
+            // Average the colors
+            int avgR = (int)samples.Average(c => c.R);
+            int avgG = (int)samples.Average(c => c.G);
+            int avgB = (int)samples.Average(c => c.B);
+            Color textColor = Color.FromArgb(255, avgR, avgG, avgB);
+
+            // Draw text with outline for better visibility
+            using (GraphicsPath path = new GraphicsPath())
+            using (Pen outlinePen = new Pen(Color.FromArgb(128, 
+                textColor.R > 128 ? 0 : 255, 
+                textColor.G > 128 ? 0 : 255, 
+                textColor.B > 128 ? 0 : 255), 3))
+            using (SolidBrush textBrush = new SolidBrush(textColor))
+            {
+                RectangleF textRect = new RectangleF(20, 20, this.Width - 40, this.Height - 40);
+                
+                // Create text path
+                path.AddString(pageText, textFont.FontFamily, (int)textFont.Style, 
+                    e.Graphics.DpiY * textFont.SizeInPoints / 72, textRect, 
+                    StringFormat.GenericDefault);
+                
+                // Draw outline then fill
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                e.Graphics.DrawPath(outlinePen, path);
+                e.Graphics.FillPath(textBrush, path);
             }
 
-            string pageInfo = $"Page {currentPage + 1}/{textPages.Count}";
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(128, textColor)))
+            // Page info
+            string pageInfo = $"Page {currentPage + 1}/{textPages.Count} | Shift: {config.BrightnessShiftRatio}%";
+            using (SolidBrush brush = new SolidBrush(textColor))
             {
-                e.Graphics.DrawString(pageInfo, new Font("Arial", 8), brush, this.Width - 100, this.Height - 25);
+                e.Graphics.DrawString(pageInfo, new Font("Arial", 8), brush, this.Width - 180, this.Height - 25);
             }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            refreshTimer?.Stop();
+            refreshTimer?.Dispose();
+            
             UnregisterHotKey(this.Handle, HOTKEY_F1_HIDE);
             UnregisterHotKey(this.Handle, HOTKEY_F3_PREV);
             UnregisterHotKey(this.Handle, HOTKEY_F4_NEXT);
             UnregisterHotKey(this.Handle, HOTKEY_F5_OPACITY_DOWN);
             UnregisterHotKey(this.Handle, HOTKEY_F6_OPACITY_UP);
-            
-            // FIX: Unregister new hotkeys
             UnregisterHotKey(this.Handle, HOTKEY_F2_TELEPORT);
             UnregisterHotKey(this.Handle, HOTKEY_CTRL_F1_SHOW);
             

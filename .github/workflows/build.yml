@@ -41,24 +41,42 @@ jobs:
       - name: Create config.ini
         run: |
           echo "; Camo-Reader Configuration" > ./publish/config.ini
+          echo "; Window position and size" >> ./publish/config.ini
           echo "WindowPosX = 100" >> ./publish/config.ini
           echo "WindowPosY = 100" >> ./publish/config.ini
           echo "WindowWidth = 800" >> ./publish/config.ini
           echo "WindowHeight = 200" >> ./publish/config.ini
+          echo "" >> ./publish/config.ini
+          echo "; Text settings" >> ./publish/config.ini
           echo "TextSize = 14" >> ./publish/config.ini
           echo "TextFilePath = book.txt" >> ./publish/config.ini
-          echo "BrightnessShiftRatio = 50" >> ./publish/config.ini
-          echo "ColorShiftRatio = 50" >> ./publish/config.ini
+          echo "" >> ./publish/config.ini
+          echo "; Adaptive transparency settings (0-100)" >> ./publish/config.ini
+          echo "; BrightnessShiftRatio: How much to shift brightness away from background (higher = more contrast)" >> ./publish/config.ini
+          echo "BrightnessShiftRatio = 80" >> ./publish/config.ini
+          echo "; ColorShiftRatio: How much to shift color away from background (higher = more color difference)" >> ./publish/config.ini
+          echo "ColorShiftRatio = 60" >> ./publish/config.ini
         shell: bash
 
       - name: Create sample book.txt
         run: |
-          echo "Welcome to Camo-Reader!" > ./publish/book.txt
+          echo "Welcome to Camo-Reader with Adaptive Transparency!" > ./publish/book.txt
           echo "" >> ./publish/book.txt
-          echo "This is a sample text file. Replace this with your own content." >> ./publish/book.txt
+          echo "The text now automatically adapts its color and brightness based on the background behind it." >> ./publish/book.txt
+          echo "This means you can read clearly on any background - white, black, or colored!" >> ./publish/book.txt
           echo "" >> ./publish/book.txt
-          echo "Use F3 and F4 to navigate pages." >> ./publish/book.txt
-          echo "Use F1 to show/hide the overlay." >> ./publish/book.txt
+          echo "Hotkeys:" >> ./publish/book.txt
+          echo "- F1: Hide overlay" >> ./publish/book.txt
+          echo "- Ctrl+F1: Show overlay" >> ./publish/book.txt
+          echo "- F2: Teleport window to cursor" >> ./publish/book.txt
+          echo "- F3/F4: Previous/Next page" >> ./publish/book.txt
+          echo "- F5/F6: Decrease/Increase contrast shift (now shows in bottom right)" >> ./publish/book.txt
+          echo "" >> ./publish/book.txt
+          echo "The adaptive algorithm samples the screen behind the text and adjusts:" >> ./publish/book.txt
+          echo "1. Brightness - inverts brightness to maximize contrast" >> ./publish/book.txt
+          echo "2. Color - shifts away from background colors" >> ./publish/book.txt
+          echo "" >> ./publish/book.txt
+          echo "Try moving the window over different backgrounds to see the adaptation in action!" >> ./publish/book.txt
         shell: bash
 
       - name: Upload artifact
