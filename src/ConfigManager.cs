@@ -50,8 +50,8 @@ namespace CamoReader
             WindowHeight = GetInt("WindowHeight", 200);
             TextSize = GetInt("TextSize", 14);
             TextFilePath = GetString("TextFilePath", "book.txt");
-            BrightnessShiftRatio = GetInt("BrightnessShiftRatio", 80);
-            ColorShiftRatio = GetInt("ColorShiftRatio", 60);
+            BrightnessShiftRatio = GetInt("BrightnessShiftRatio", 30);
+            ColorShiftRatio = GetInt("ColorShiftRatio", 20);
         }
 
         private void CreateDefaultConfig()
@@ -69,9 +69,9 @@ TextFilePath = book.txt
 
 ; Adaptive transparency settings (0-100)
 ; BrightnessShiftRatio: How much to shift brightness away from background (higher = more contrast)
-BrightnessShiftRatio = 80
+BrightnessShiftRatio = 30
 ; ColorShiftRatio: How much to shift color away from background (higher = more color difference)
-ColorShiftRatio = 60
+ColorShiftRatio = 20
 ";
             File.WriteAllText(filePath, defaultConfig);
         }

@@ -62,6 +62,10 @@ namespace CamoReader
         private int currentPage = 0;
         private Font textFont = null!;
         private System.Windows.Forms.Timer refreshTimer = null!;
+        
+        // Cache for smoother color transitions
+        private Color cachedTextColor = Color.White;
+        private const float COLOR_SMOOTHING = 0.3f; // How much to blend with previous color
         #endregion
 
         public MainForm()
@@ -106,11 +110,10 @@ namespace CamoReader
             this.Location = new Point(config.WindowPosX, config.WindowPosY);
             this.Size = new Size(config.WindowWidth, config.WindowHeight);
             
-            // Use Magenta as transparency key
             this.TransparencyKey = Color.Magenta;
-            this.Opacity = 1.0; // Keep window fully opaque, we'll handle transparency in drawing
+            this.Opacity = 1.0;
             
-            textFont = new Font("Arial", config.TextSize, FontStyle.Bold);
+            textFont = new Font("Arial", config.TextSize);
         }
 
         private void SetupWindow()
@@ -122,7 +125,7 @@ namespace CamoReader
         private void SetupRefreshTimer()
         {
             refreshTimer = new System.Windows.Forms.Timer();
-            refreshTimer.Interval = 100; // Refresh every 100ms to adapt to background
+            refreshTimer.Interval = 100;
             refreshTimer.Tick += (s, e) => this.Invalidate();
             refreshTimer.Start();
         }
@@ -276,37 +279,50 @@ namespace CamoReader
             return color;
         }
 
-        private Color GetAdaptiveTextColor(int screenX, int screenY)
+        private Color GetAdaptiveTextColor(Color bgColor)
         {
-            Color bgColor = SampleScreenColor(screenX, screenY);
-            
-            // Calculate perceived brightness (0-255)
-            float brightness = (bgColor.R * 0.299f + bgColor.G * 0.587f + bgColor.B * 0.114f);
-            
-            // Shift ratios from config
             float brightnessShift = config.BrightnessShiftRatio / 100f;
             float colorShift = config.ColorShiftRatio / 100f;
             
-            // Invert brightness direction
-            float targetBrightness = brightness < 128 ? 255 : 0;
-            float newBrightness = brightness + (targetBrightness - brightness) * brightnessShift;
-            
-            // Shift color away from background
-            int r = (int)Math.Clamp(bgColor.R + (255 - bgColor.R * 2) * colorShift, 0, 255);
-            int g = (int)Math.Clamp(bgColor.G + (255 - bgColor.G * 2) * colorShift, 0, 255);
-            int b = (int)Math.Clamp(bgColor.B + (255 - bgColor.B * 2) * colorShift, 0, 255);
-            
-            // Normalize to target brightness
-            float currentBrightness = (r * 0.299f + g * 0.587f + b * 0.114f);
-            if (currentBrightness > 0)
+            // If both ratios are 0, return exact background color (invisible)
+            if (brightnessShift == 0 && colorShift == 0)
             {
-                float scale = newBrightness / currentBrightness;
-                r = (int)Math.Clamp(r * scale, 0, 255);
-                g = (int)Math.Clamp(g * scale, 0, 255);
-                b = (int)Math.Clamp(b * scale, 0, 255);
+                return bgColor;
             }
             
-            return Color.FromArgb(255, r, g, b);
+            // Calculate perceived brightness (0-1)
+            float bgBrightness = (bgColor.R * 0.299f + bgColor.G * 0.587f + bgColor.B * 0.114f) / 255f;
+            
+            // Start with background color
+            float r = bgColor.R / 255f;
+            float g = bgColor.G / 255f;
+            float b = bgColor.B / 255f;
+            
+            // Apply brightness shift: push away from current brightness
+            if (brightnessShift > 0)
+            {
+                float targetBrightness = bgBrightness < 0.5f ? 1.0f : 0.0f;
+                float brightnessDelta = (targetBrightness - bgBrightness) * brightnessShift;
+                
+                r += brightnessDelta;
+                g += brightnessDelta;
+                b += brightnessDelta;
+            }
+            
+            // Apply color shift: invert color components
+            if (colorShift > 0)
+            {
+                r = r + ((1.0f - r) - r) * colorShift;
+                g = g + ((1.0f - g) - g) * colorShift;
+                b = b + ((1.0f - b) - b) * colorShift;
+            }
+            
+            // Clamp values
+            r = Math.Clamp(r, 0f, 1f);
+            g = Math.Clamp(g, 0f, 1f);
+            b = Math.Clamp(b, 0f, 1f);
+            
+            return Color.FromArgb(255, (int)(r * 255), (int)(g * 255), (int)(b * 255));
         }
 
         private void ToggleVisibility()
@@ -355,62 +371,44 @@ namespace CamoReader
         private void MainForm_Paint(object? sender, PaintEventArgs e)
         {
             if (textPages == null || textPages.Count == 0) return;
-
             if (currentPage >= textPages.Count) currentPage = 0;
-            if (textPages.Count == 0) return;
 
             // Fill background with transparency key
             e.Graphics.Clear(Color.Magenta);
 
             string pageText = textPages[currentPage];
             
-            // Sample multiple points and average for more stable color
+            // Sample center point of the window
             int centerX = this.Left + this.Width / 2;
             int centerY = this.Top + this.Height / 2;
             
-            List<Color> samples = new List<Color>();
-            for (int i = -1; i <= 1; i++)
-            {
-                for (int j = -1; j <= 1; j++)
-                {
-                    int sampleX = centerX + i * (this.Width / 4);
-                    int sampleY = centerY + j * (this.Height / 4);
-                    samples.Add(GetAdaptiveTextColor(sampleX, sampleY));
-                }
-            }
+            // Get background color
+            Color bgColor = SampleScreenColor(centerX, centerY);
             
-            // Average the colors
-            int avgR = (int)samples.Average(c => c.R);
-            int avgG = (int)samples.Average(c => c.G);
-            int avgB = (int)samples.Average(c => c.B);
-            Color textColor = Color.FromArgb(255, avgR, avgG, avgB);
+            // Calculate adaptive color
+            Color newTextColor = GetAdaptiveTextColor(bgColor);
+            
+            // Smooth color transitions to reduce flashing
+            int r = (int)(cachedTextColor.R * (1 - COLOR_SMOOTHING) + newTextColor.R * COLOR_SMOOTHING);
+            int g = (int)(cachedTextColor.G * (1 - COLOR_SMOOTHING) + newTextColor.G * COLOR_SMOOTHING);
+            int b = (int)(cachedTextColor.B * (1 - COLOR_SMOOTHING) + newTextColor.B * COLOR_SMOOTHING);
+            cachedTextColor = Color.FromArgb(255, r, g, b);
 
-            // Draw text with outline for better visibility
-            using (GraphicsPath path = new GraphicsPath())
-            using (Pen outlinePen = new Pen(Color.FromArgb(128, 
-                textColor.R > 128 ? 0 : 255, 
-                textColor.G > 128 ? 0 : 255, 
-                textColor.B > 128 ? 0 : 255), 3))
-            using (SolidBrush textBrush = new SolidBrush(textColor))
+            // Draw text - no outline for subtle camouflage
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            
+            using (SolidBrush textBrush = new SolidBrush(cachedTextColor))
             {
                 RectangleF textRect = new RectangleF(20, 20, this.Width - 40, this.Height - 40);
-                
-                // Create text path
-                path.AddString(pageText, textFont.FontFamily, (int)textFont.Style, 
-                    e.Graphics.DpiY * textFont.SizeInPoints / 72, textRect, 
-                    StringFormat.GenericDefault);
-                
-                // Draw outline then fill
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                e.Graphics.DrawPath(outlinePen, path);
-                e.Graphics.FillPath(textBrush, path);
+                e.Graphics.DrawString(pageText, textFont, textBrush, textRect);
             }
 
-            // Page info
-            string pageInfo = $"Page {currentPage + 1}/{textPages.Count} | Shift: {config.BrightnessShiftRatio}%";
-            using (SolidBrush brush = new SolidBrush(textColor))
+            // Page info - slightly transparent
+            string pageInfo = $"Page {currentPage + 1}/{textPages.Count} | Brightness: {config.BrightnessShiftRatio}% | Color: {config.ColorShiftRatio}%";
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(180, cachedTextColor)))
             {
-                e.Graphics.DrawString(pageInfo, new Font("Arial", 8), brush, this.Width - 180, this.Height - 25);
+                e.Graphics.DrawString(pageInfo, new Font("Arial", 8), brush, 10, this.Height - 25);
             }
         }
 

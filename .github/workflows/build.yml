@@ -53,9 +53,9 @@ jobs:
           echo "" >> ./publish/config.ini
           echo "; Adaptive transparency settings (0-100)" >> ./publish/config.ini
           echo "; BrightnessShiftRatio: How much to shift brightness away from background (higher = more contrast)" >> ./publish/config.ini
-          echo "BrightnessShiftRatio = 80" >> ./publish/config.ini
+          echo "BrightnessShiftRatio = 30" >> ./publish/config.ini
           echo "; ColorShiftRatio: How much to shift color away from background (higher = more color difference)" >> ./publish/config.ini
-          echo "ColorShiftRatio = 60" >> ./publish/config.ini
+          echo "ColorShiftRatio = 20" >> ./publish/config.ini
         shell: bash
 
       - name: Create sample book.txt
