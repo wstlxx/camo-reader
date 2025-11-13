@@ -60,7 +60,7 @@ namespace CamoReader
         private List<string> textPages = null!;
         private int currentPage = 0;
         private Font textFont = null!;
-        private Timer refreshTimer = null!;
+        private System.Windows.Forms.Timer refreshTimer = null!;
         #endregion
 
         public MainForm()
@@ -120,7 +120,7 @@ namespace CamoReader
 
         private void SetupRefreshTimer()
         {
-            refreshTimer = new Timer();
+            refreshTimer = new System.Windows.Forms.Timer();
             refreshTimer.Interval = 100; // Refresh every 100ms to adapt to background
             refreshTimer.Tick += (s, e) => this.Invalidate();
             refreshTimer.Start();
