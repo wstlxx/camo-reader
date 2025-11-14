@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 
 namespace CamoReader
 {
@@ -277,9 +276,12 @@ namespace CamoReader
         {
             try
             {
+                // Create bitmap and capture directly without window manipulation
                 Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
                 using (Graphics g = Graphics.FromImage(bmp))
                 {
+                    // CopyFromScreen captures the screen including our window
+                    // Since our window uses transparency key, it will capture what's behind
                     g.CopyFromScreen(x, y, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
                 }
                 return bmp;
@@ -390,20 +392,14 @@ namespace CamoReader
 
                 string pageText = textPages[currentPage];
                 
-                // CRITICAL: Capture screen FRESH every paint - get current window position
+                // Capture screen at window position WITHOUT hiding window
                 int captureX = this.Left;
                 int captureY = this.Top;
                 int captureW = this.Width;
                 int captureH = this.Height;
                 
-                // Hide window briefly to capture what's behind it
-                this.Visible = false;
-                Thread.Sleep(10); // Small delay to let window disappear
-                
                 using (Bitmap screenCapture = CaptureScreenRegion(captureX, captureY, captureW, captureH))
                 {
-                    this.Visible = true; // Show window again
-                    
                     using (Bitmap output = new Bitmap(captureW, captureH, PixelFormat.Format32bppArgb))
                     {
                         // Create text mask
@@ -517,7 +513,6 @@ namespace CamoReader
             }
             catch (Exception ex)
             {
-                this.Visible = true; // Ensure window is visible on error
                 e.Graphics.Clear(Color.Magenta);
                 using (SolidBrush brush = new SolidBrush(Color.White))
                 {
