@@ -138,7 +138,7 @@ namespace CamoReader
         private void SetupRefreshTimer()
         {
             refreshTimer = new System.Windows.Forms.Timer();
-            refreshTimer.Interval = 100;
+            refreshTimer.Interval = 16; // ~60 FPS for smoother updates
             refreshTimer.Tick += (s, e) => 
             {
                 if (!isRendering)
