@@ -377,7 +377,7 @@ namespace CamoReader
             // Create processed image with adaptive text
             Bitmap output = new Bitmap(this.Width, this.Height);
             
-            using (Graphics gOutput = Graphics.FromCreate(output))
+            using (Graphics gOutput = Graphics.FromImage(output))
             {
                 // High quality text rendering
                 gOutput.SmoothingMode = SmoothingMode.AntiAlias;

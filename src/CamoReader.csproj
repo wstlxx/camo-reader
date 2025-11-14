@@ -10,13 +10,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
-    </PropertyGroup>
+  </PropertyGroup>
 
   <ItemGroup>
     <None Update="app.manifest">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     
-    </ItemGroup>
+  </ItemGroup>
 </Project>
