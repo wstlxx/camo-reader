@@ -105,6 +105,17 @@ namespace CamoReader
             }
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            // Make window layered but NOT for itself - exclude from capture
+            SetWindowDisplayAffinity(this.Handle, WDA_EXCLUDEFROMCAPTURE);
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+        private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
         private void LoadConfiguration()
         {
             config = new ConfigManager("config.ini");
