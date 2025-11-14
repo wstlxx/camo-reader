@@ -29,8 +29,7 @@ namespace CamoReader
         private static extern uint GetPixel(IntPtr hdc, int nXPos, int nYPos);
 
         [DllImport("gdi32.dll")]
-        private static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, 
-            IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
+        private static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int width, int height, IntPtr hdcSrc, int xSrc, int ySrc, int rop);
 
         private const int SRCCOPY = 0x00CC0020;
 
@@ -68,9 +67,7 @@ namespace CamoReader
         private int currentPage = 0;
         private Font textFont = null!;
         private System.Windows.Forms.Timer refreshTimer = null!;
-        
-        // Bitmap for capturing background
-        private Bitmap? backgroundBitmap = null;
+        private Bitmap? screenCapture = null;
         #endregion
 
         public MainForm()
@@ -240,7 +237,7 @@ namespace CamoReader
             List<string> pages = new List<string>();
             using (Graphics g = this.CreateGraphics())
             {
-                SizeF maxSize = new SizeF(this.Width - 40, this.Height - 60);
+                SizeF maxSize = new SizeF(this.Width - 40, this.Height - 40);
                 string[] words = text.Split(new[] { ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
                 
                 string currentPage = "";
@@ -271,35 +268,34 @@ namespace CamoReader
 
         private Bitmap CaptureScreenRegion(int x, int y, int width, int height)
         {
-            Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            Bitmap bmp = new Bitmap(width, height);
             using (Graphics g = Graphics.FromImage(bmp))
             {
-                IntPtr hdc = g.GetHdc();
-                IntPtr screenDC = GetDC(IntPtr.Zero);
-                BitBlt(hdc, 0, 0, width, height, screenDC, x, y, SRCCOPY);
-                ReleaseDC(IntPtr.Zero, screenDC);
-                g.ReleaseHdc(hdc);
+                IntPtr hdcDest = g.GetHdc();
+                IntPtr hdcSrc = GetDC(IntPtr.Zero);
+                BitBlt(hdcDest, 0, 0, width, height, hdcSrc, x, y, SRCCOPY);
+                ReleaseDC(IntPtr.Zero, hdcSrc);
+                g.ReleaseHdc(hdcDest);
             }
             return bmp;
         }
 
-        private Color GetAdaptiveColor(Color bgColor, float brightnessShift, float colorShift)
+        private Color AdaptColor(Color bgColor)
         {
-            // If both ratios are 0, return exact background color (invisible)
+            float brightnessShift = config.BrightnessShiftRatio / 100f;
+            float colorShift = config.ColorShiftRatio / 100f;
+            
             if (brightnessShift == 0 && colorShift == 0)
             {
                 return bgColor;
             }
             
-            // Calculate perceived brightness (0-1)
             float bgBrightness = (bgColor.R * 0.299f + bgColor.G * 0.587f + bgColor.B * 0.114f) / 255f;
             
-            // Start with background color
             float r = bgColor.R / 255f;
             float g = bgColor.G / 255f;
             float b = bgColor.B / 255f;
             
-            // Apply brightness shift: push away from current brightness
             if (brightnessShift > 0)
             {
                 float targetBrightness = bgBrightness < 0.5f ? 1.0f : 0.0f;
@@ -310,7 +306,6 @@ namespace CamoReader
                 b += brightnessDelta;
             }
             
-            // Apply color shift: invert color components
             if (colorShift > 0)
             {
                 r = r + ((1.0f - r) - r) * colorShift;
@@ -318,7 +313,6 @@ namespace CamoReader
                 b = b + ((1.0f - b) - b) * colorShift;
             }
             
-            // Clamp values
             r = Math.Clamp(r, 0f, 1f);
             g = Math.Clamp(g, 0f, 1f);
             b = Math.Clamp(b, 0f, 1f);
@@ -374,121 +368,105 @@ namespace CamoReader
             if (textPages == null || textPages.Count == 0) return;
             if (currentPage >= textPages.Count) currentPage = 0;
 
-            // Clear with transparency key
-            e.Graphics.Clear(Color.Magenta);
-
             string pageText = textPages[currentPage];
             
-            // Capture the screen region behind the window
-            backgroundBitmap?.Dispose();
-            backgroundBitmap = CaptureScreenRegion(this.Left, this.Top, this.Width, this.Height);
-
-            // Create a bitmap to render text mask
-            using (Bitmap textMask = new Bitmap(this.Width, this.Height, PixelFormat.Format32bppArgb))
+            // Capture screen behind window
+            screenCapture?.Dispose();
+            screenCapture = CaptureScreenRegion(this.Left, this.Top, this.Width, this.Height);
+            
+            // Create processed image with adaptive text
+            Bitmap output = new Bitmap(this.Width, this.Height);
+            
+            using (Graphics gOutput = Graphics.FromCreate(output))
             {
-                // Render text to mask with anti-aliasing
-                using (Graphics gMask = Graphics.FromImage(textMask))
+                // High quality text rendering
+                gOutput.SmoothingMode = SmoothingMode.AntiAlias;
+                gOutput.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                gOutput.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                
+                // Draw captured background
+                gOutput.DrawImage(screenCapture, 0, 0);
+                
+                // Create text path for pixel-perfect processing
+                using (GraphicsPath textPath = new GraphicsPath())
                 {
-                    gMask.SmoothingMode = SmoothingMode.AntiAlias;
-                    gMask.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-                    gMask.Clear(Color.Transparent);
+                    RectangleF textRect = new RectangleF(20, 20, this.Width - 40, this.Height - 40);
+                    textPath.AddString(pageText, textFont.FontFamily, (int)textFont.Style, 
+                        gOutput.DpiY * textFont.SizeInPoints / 72, textRect, StringFormat.GenericDefault);
                     
-                    // Draw main text
-                    using (SolidBrush whiteBrush = new SolidBrush(Color.White))
+                    // Get text bounds
+                    RectangleF bounds = textPath.GetBounds();
+                    
+                    if (bounds.Width > 0 && bounds.Height > 0)
                     {
-                        RectangleF textRect = new RectangleF(20, 20, this.Width - 40, this.Height - 60);
-                        gMask.DrawString(pageText, textFont, whiteBrush, textRect);
-                    }
-                    
-                    // Draw page info
-                    string pageInfo = $"Page {currentPage + 1}/{textPages.Count} | Brightness: {config.BrightnessShiftRatio}% | Color: {config.ColorShiftRatio}%";
-                    using (SolidBrush whiteBrush = new SolidBrush(Color.White))
-                    {
-                        gMask.DrawString(pageInfo, new Font("Arial", 8), whiteBrush, 10, this.Height - 25);
-                    }
-                }
-
-                // Create output bitmap
-                using (Bitmap output = new Bitmap(this.Width, this.Height, PixelFormat.Format32bppArgb))
-                {
-                    // Lock bits for fast pixel access
-                    BitmapData maskData = textMask.LockBits(
-                        new Rectangle(0, 0, textMask.Width, textMask.Height),
-                        ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                    
-                    BitmapData bgData = backgroundBitmap.LockBits(
-                        new Rectangle(0, 0, backgroundBitmap.Width, backgroundBitmap.Height),
-                        ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                    
-                    BitmapData outData = output.LockBits(
-                        new Rectangle(0, 0, output.Width, output.Height),
-                        ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-
-                    unsafe
-                    {
-                        byte* maskPtr = (byte*)maskData.Scan0;
-                        byte* bgPtr = (byte*)bgData.Scan0;
-                        byte* outPtr = (byte*)outData.Scan0;
-
-                        float brightnessShift = config.BrightnessShiftRatio / 100f;
-                        float colorShift = config.ColorShiftRatio / 100f;
-
-                        for (int y = 0; y < this.Height; y++)
+                        // Lock bits for direct pixel access
+                        Rectangle lockRect = new Rectangle(
+                            Math.Max(0, (int)bounds.X - 2),
+                            Math.Max(0, (int)bounds.Y - 2),
+                            Math.Min(output.Width - Math.Max(0, (int)bounds.X - 2), (int)bounds.Width + 4),
+                            Math.Min(output.Height - Math.Max(0, (int)bounds.Y - 2), (int)bounds.Height + 4)
+                        );
+                        
+                        if (lockRect.Width > 0 && lockRect.Height > 0)
                         {
-                            for (int x = 0; x < this.Width; x++)
+                            BitmapData bmpData = output.LockBits(lockRect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+                            
+                            unsafe
                             {
-                                int idx = (y * maskData.Stride) + (x * 4);
+                                byte* ptr = (byte*)bmpData.Scan0;
+                                int stride = bmpData.Stride;
                                 
-                                // Get mask alpha (white = 255, transparent = 0)
-                                byte maskAlpha = maskPtr[idx + 3];
-                                
-                                if (maskAlpha > 0)
+                                // Process each pixel in the text region
+                                for (int y = 0; y < lockRect.Height; y++)
                                 {
-                                    // Get background color at this pixel
-                                    Color bgColor = Color.FromArgb(
-                                        bgPtr[idx + 2],  // R
-                                        bgPtr[idx + 1],  // G
-                                        bgPtr[idx + 0]   // B
-                                    );
-                                    
-                                    // Calculate adaptive color for this pixel
-                                    Color adaptiveColor = GetAdaptiveColor(bgColor, brightnessShift, colorShift);
-                                    
-                                    // Blend based on mask alpha
-                                    float alpha = maskAlpha / 255f;
-                                    
-                                    outPtr[idx + 0] = (byte)(bgColor.B * (1 - alpha) + adaptiveColor.B * alpha); // B
-                                    outPtr[idx + 1] = (byte)(bgColor.G * (1 - alpha) + adaptiveColor.G * alpha); // G
-                                    outPtr[idx + 2] = (byte)(bgColor.R * (1 - alpha) + adaptiveColor.R * alpha); // R
-                                    outPtr[idx + 3] = 255; // A
-                                }
-                                else
-                                {
-                                    // Transparent - use magenta key
-                                    outPtr[idx + 0] = 255; // B
-                                    outPtr[idx + 1] = 0;   // G
-                                    outPtr[idx + 2] = 255; // R
-                                    outPtr[idx + 3] = 255; // A
+                                    for (int x = 0; x < lockRect.Width; x++)
+                                    {
+                                        int screenX = lockRect.X + x;
+                                        int screenY = lockRect.Y + y;
+                                        
+                                        // Check if this pixel is part of the text
+                                        if (textPath.IsVisible(screenX, screenY, gOutput))
+                                        {
+                                            int idx = y * stride + x * 4;
+                                            
+                                            Color bgPixel = Color.FromArgb(ptr[idx + 2], ptr[idx + 1], ptr[idx]);
+                                            Color adaptedPixel = AdaptColor(bgPixel);
+                                            
+                                            ptr[idx] = adaptedPixel.B;
+                                            ptr[idx + 1] = adaptedPixel.G;
+                                            ptr[idx + 2] = adaptedPixel.R;
+                                            ptr[idx + 3] = 255;
+                                        }
+                                    }
                                 }
                             }
+                            
+                            output.UnlockBits(bmpData);
                         }
                     }
-
-                    textMask.UnlockBits(maskData);
-                    backgroundBitmap.UnlockBits(bgData);
-                    output.UnlockBits(outData);
-
-                    // Draw the result
-                    e.Graphics.DrawImage(output, 0, 0);
+                }
+                
+                // Draw page info
+                string pageInfo = $"Page {currentPage + 1}/{textPages.Count} | B:{config.BrightnessShiftRatio}% C:{config.ColorShiftRatio}%";
+                Color infoColor = AdaptColor(screenCapture.GetPixel(10, this.Height - 25));
+                using (SolidBrush brush = new SolidBrush(Color.FromArgb(200, infoColor)))
+                {
+                    gOutput.DrawString(pageInfo, new Font("Arial", 8), brush, 10, this.Height - 25);
                 }
             }
+            
+            // Draw final output
+            e.Graphics.Clear(Color.Magenta);
+            e.Graphics.DrawImage(output, 0, 0);
+            
+            output.Dispose();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             refreshTimer?.Stop();
             refreshTimer?.Dispose();
-            backgroundBitmap?.Dispose();
+            screenCapture?.Dispose();
             
             UnregisterHotKey(this.Handle, HOTKEY_F1_HIDE);
             UnregisterHotKey(this.Handle, HOTKEY_F3_PREV);
